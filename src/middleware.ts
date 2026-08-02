@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
     {
       cookies: {
         getAll() { return request.cookies.getAll(); },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: any[]) {
           cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
 
   // Publiczne ścieżki — nie wymagają logowania
   const publicPaths = ["/login", "/auth/callback", "/auth/confirm"];
-  if (publicPaths.some((p) => pathname.startsWith(p))) {
+  if (publicPaths.some((p) => pathname.startsWith(p))) {: any[]: any[]
     return supabaseResponse;
   }
 
