@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
 
 export default async function ClientDashboard() {
   const supabase = await createClient();
@@ -36,7 +37,7 @@ export default async function ClientDashboard() {
           {orders.map((order) => {
             const status = statusLabels[order.status] || statusLabels.new;
             return (
-              <div key={order.id} className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6 flex items-center justify-between hover:border-brand-lime/30 transition">
+              <Link key={order.id} href={`/klient/zlecenia/${order.id}`} className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6 flex items-center justify-between hover:border-brand-lime/30 transition">
                 <div>
                   <p className="font-medium">
                     {order.service_type === "oklejanie" ? "Oklejanie" : order.service_type === "ppf" ? "Folia PPF" : order.service_type}
@@ -49,7 +50,7 @@ export default async function ClientDashboard() {
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${status.color}`}>
                   {status.text}
                 </span>
-              </div>
+              </Link>
             );
           })}
         </div>
