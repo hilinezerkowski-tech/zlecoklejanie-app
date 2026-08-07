@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { createStudio } from "./actions";
 
 export function AddStudioForm() {
   const [open, setOpen] = useState(false);
@@ -10,7 +10,6 @@ export function AddStudioForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const router = useRouter();
-  const supabase = createClient();
 
   const [form, setForm] = useState({
     email: "",
@@ -33,70 +32,21 @@ export function AddStudioForm() {
     setError("");
     setSuccess("");
 
-    // 1. Utwórz konto auth (magic-link, bez hasła)
-    const { data: authData, error: authErr } =
-      await supabase.auth.admin.createUser({
-        email: form.email,
-        email_confirm: true,
-        user_metadata: { role: "studio" },
-      });
-
-    // Jeśli admin API nie działa (anon key), użyj signUp
-    let userId: string | undefined;
-    if (authErr) {
-      // Fallback: utwórz profil ręcznie
-      // Najpierw sprawdź czy profil z tym emailem istnieje
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("email", form.email)
-        .single();
-
-      if (existing) {
-        userId = existing.id;
-      } else {
-        setError(
-          "Nie można utworzyć konta studia automatycznie. Dodaj użytkownika ręcznie w Supabase (Authentication → Users), a potem wróć tutaj."
-        );
-        setLoading(false);
-        return;
-      }
-    } else {
-      userId = authData.user?.id;
-    }
-
-    if (!userId) {
-      setError("Nie udało się uzyskać ID użytkownika.");
-      setLoading(false);
-      return;
-    }
-
-    // 2. Ustaw rolę na 'studio'
-    await supabase
-      .from("profiles")
-      .update({ role: "studio", phone: form.phone || null })
-      .eq("id", userId);
-
-    // 3. Utwórz rekord w studios
-    const specializations = form.specializations
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const { error: studioErr } = await supabase.from("studios").insert({
-      id: userId,
+    // Cała logika tworzenia konta dzieje się w Server Action (service role).
+    const res = await createStudio({
+      email: form.email,
       business_name: form.business_name,
-      address: form.address || null,
-      instagram: form.instagram.replace("@", "") || null,
-      nip: form.nip || null,
-      specializations,
-      status: "active", // Admin dodaje = od razu aktywne
+      address: form.address,
+      instagram: form.instagram,
+      phone: form.phone,
+      nip: form.nip,
+      specializations: form.specializations,
     });
 
-    if (studioErr) {
-      setError(`Błąd tworzenia studia: ${studioErr.message}`);
+    if (!res.ok) {
+      setError(res.error || "Nieznany błąd.");
     } else {
-      setSuccess(`Studio "${form.business_name}" dodane i aktywowane.`);
+      setSuccess(res.message || "Studio dodane.");
       setForm({
         email: "",
         business_name: "",
