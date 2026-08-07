@@ -30,12 +30,10 @@ export default async function AdminDashboard() {
         ))}
       </div>
 
-      {/* Placeholder */}
+      {/* Info */}
       <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-8 text-center">
         <p className="text-brand-chrom">
-          Panel admina — lista zleceń i zarządzanie studiami pojawią się w Fazie 4.
-          <br />
-          Na razie widzisz metryki z bazy danych.
+          Metryki na żywo z bazy danych. Zlecenia i studia znajdziesz w menu po lewej.
         </p>
       </div>
     </div>
