@@ -166,7 +166,7 @@ export default async function OrderDetailPage({
           {order.description && (
             <div className="mt-4 pt-4 border-t border-brand-border">
               <p className="text-sm text-brand-chrom mb-1">Opis</p>
-              <p className="text-sm">{order.description}</p>
+              <p className="text-sm whitespace-pre-line">{order.description}</p>
             </div>
           )}
         </div>
