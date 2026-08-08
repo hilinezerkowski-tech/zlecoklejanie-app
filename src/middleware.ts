@@ -28,7 +28,10 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Publiczne ścieżki — nie wymagają logowania
-  const publicPaths = ["/login", "/auth/callback", "/auth/confirm"];
+  // Publiczny webhook: Supabase (pg_net) nie wysyla ciasteczek sesji, wiec
+  //  /api/lead-alert musi ominac guard. Endpoint broni sie sam (staly odbiorca,
+  //  tresc z bazy po ID, tylko swieze leady) — patrz src/app/api/lead-alert.
+  const publicPaths = ["/login", "/auth/callback", "/auth/confirm", "/api/lead-alert"];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     return supabaseResponse;
   }
