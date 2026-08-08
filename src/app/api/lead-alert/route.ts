@@ -18,7 +18,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 
 const FROM = "ZlecOklejanie.pl <powiadomienia@zlecoklejanie.pl>";
-const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL || "kontakt@zlecoklejanie.pl";
+// UWAGA: kontakt@zlecoklejanie.pl NIE ma skrzynki odbiorczej — rekord MX domeny
+// obsluguje tylko bounce z Resend przy wysylce. Alerty ida na adres, ktory
+// realnie czytamy. Mozna nadpisac zmienna ADMIN_ALERT_EMAIL w Vercelu.
+const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL || "hiline.zerkowski@gmail.com";
 const APP_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
   "https://zlecoklejanie-app.vercel.app";
