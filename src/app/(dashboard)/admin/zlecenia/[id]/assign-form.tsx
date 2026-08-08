@@ -51,6 +51,13 @@ export function AssignStudioForm({
         .eq("id", orderId)
         .eq("status", "new");
 
+      // Powiadomienie e-mail do przypisanego studia (best-effort)
+      fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "assigned", orderId }),
+      }).catch(() => {});
+
       router.refresh();
       setSelectedStudio("");
     }
