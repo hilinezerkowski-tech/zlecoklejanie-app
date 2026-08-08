@@ -238,6 +238,7 @@ export default async function ClientOrderDetailPage({
                 ) : (
                   <ChooseQuoteButton
                     quoteId={q.id}
+                    orderId={order.id}
                     studioName={studio?.business_name || "to studio"}
                   />
                 )}
