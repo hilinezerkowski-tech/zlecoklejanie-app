@@ -61,18 +61,27 @@ export default async function ClientOrderDetailPage({
   );
   const studioMap: Record<
     string,
-    { business_name: string; city: string | null; slug: string | null }
+    {
+      business_name: string;
+      city: string | null;
+      slug: string | null;
+      verified_at: string | null;
+    }
   > = {};
   if (studioIds.length > 0) {
     const { data: studios } = await supabase
       .from("studios")
-      .select("id, business_name, city, slug")
+      // UWAGA: tabela studios nie ma kolumny `city` — miasto siedzi w `address`.
+      // Pytanie o nieistniejaca kolumne zwracalo blad i klient widzial
+      // wszedzie generyczne "Studio" zamiast nazwy firmy.
+      .select("id, business_name, address, slug, verified_at")
       .in("id", studioIds);
     for (const s of studios ?? []) {
       studioMap[s.id] = {
         business_name: s.business_name,
-        city: s.city,
+        city: s.address,
         slug: s.slug,
+        verified_at: s.verified_at,
       };
     }
   }
@@ -192,9 +201,19 @@ export default async function ClientOrderDetailPage({
               >
                 <div className="flex items-start justify-between gap-4 mb-4">
                   <div>
-                    <p className="font-semibold">
-                      {studio?.business_name || "Studio"}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-semibold">
+                        {studio?.business_name || "Studio"}
+                      </p>
+                      {studio?.verified_at && (
+                        <span
+                          title="Firme sprawdzilismy: NIP, adres i realizacje"
+                          className="text-xs px-2 py-0.5 rounded-full font-medium bg-teal-400/15 text-teal-400"
+                        >
+                          ✓ Zweryfikowane
+                        </span>
+                      )}
+                    </div>
                     {studio?.city && (
                       <p className="text-sm text-brand-chrom">{studio.city}</p>
                     )}
