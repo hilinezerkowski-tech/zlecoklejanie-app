@@ -62,6 +62,13 @@ export function QuoteForm({
       return;
     }
 
+    // Powiadomienie e-mail do klienta o nowej ofercie (best-effort)
+    fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "quoted", orderId }),
+    }).catch(() => {});
+
     router.refresh();
   }
 
