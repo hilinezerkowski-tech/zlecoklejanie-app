@@ -6,9 +6,11 @@ import { createClient } from "@/lib/supabase/client";
 
 export function ChooseQuoteButton({
   quoteId,
+  orderId,
   studioName,
 }: {
   quoteId: string;
+  orderId: string;
   studioName: string;
 }) {
   const router = useRouter();
@@ -34,6 +36,13 @@ export function ChooseQuoteButton({
       setError("Nie udało się wybrać oferty. Odśwież stronę i spróbuj ponownie.");
       return;
     }
+
+    // Powiadomienia e-mail do studia i klienta (best-effort)
+    fetch("/api/notify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "chosen", orderId }),
+    }).catch(() => {});
 
     router.refresh();
   }
