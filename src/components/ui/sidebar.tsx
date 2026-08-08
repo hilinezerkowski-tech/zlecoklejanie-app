@@ -14,6 +14,7 @@ interface SidebarProps {
 const menuItems: Record<string, { label: string; href: string; icon: string }[]> = {
   admin: [
     { label: "Dashboard", href: "/admin", icon: "📊" },
+    { label: "Leady", href: "/admin/leady", icon: "📥" },
     { label: "Zlecenia", href: "/admin/zlecenia", icon: "📋" },
     { label: "Studia", href: "/admin/studia", icon: "🏢" },
     { label: "Ustawienia", href: "/admin/ustawienia", icon: "⚙️" },
