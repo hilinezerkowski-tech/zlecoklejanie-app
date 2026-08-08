@@ -34,7 +34,7 @@ BEGIN
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
   -- Powiadomienie jest best-effort: awaria HTTP nie może wywalić INSERTa
-  -- leada, bo straclibyśmy zgłoszenie klienta.
+  -- leada, bo stracilibyśmy zgłoszenie klienta.
   RAISE WARNING 'lead-alert webhook failed: %', SQLERRM;
   RETURN NEW;
 END;
