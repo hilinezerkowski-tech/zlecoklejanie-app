@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { createStudio } from "../studia/actions";
 
 export type LeadActionResult = {
   ok: boolean;
@@ -89,11 +90,20 @@ export async function convertLeadToOrder(leadId: string): Promise<LeadActionResu
 
   const { data: existingProfile } = await admin
     .from("profiles")
-    .select("id")
+    .select("id, role")
     .eq("email", email)
     .maybeSingle();
 
   if (existingProfile?.id) {
+    // Konto o tym mailu juz istnieje. Jesli nalezy do studia lub admina, NIE
+    // tworzymy zlecenia — middleware blokuje im /klient, wiec zlecenie byloby
+    // niedostepne dla wlasciciela. Lepiej powiedziec to wprost.
+    if (existingProfile.role && existingProfile.role !== "client") {
+      return {
+        ok: false,
+        error: `Konto ${email} ma juz role „${existingProfile.role}". Zlecenie dla tego adresu trzeba zalozyc recznie albo poprosic klienta o inny e-mail.`,
+      };
+    }
     clientId = existingProfile.id;
   } else {
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
@@ -175,4 +185,52 @@ export async function setLeadStatus(
   revalidatePath("/admin/leady");
   revalidatePath("/admin");
   return { ok: true, message: "Status leada zaktualizowany." };
+}
+
+/**
+ * Zamienia lead typu "studio" na aktywne konto studia.
+ * Deleguje do `createStudio` — tej samej logiki, ktorej uzywa formularz
+ * w /admin/studia — zeby nie duplikowac obslugi service role i kolizji e-maili.
+ */
+export async function convertLeadToStudio(leadId: string): Promise<LeadActionResult> {
+  const guard = await requireAdmin();
+  if (!guard.ok) return { ok: false, error: guard.error };
+
+  const admin = createAdminClient();
+  const { data: lead } = await admin
+    .from("landing_leads")
+    .select("id, kind, payload, status")
+    .eq("id", leadId)
+    .single();
+
+  if (!lead) return { ok: false, error: "Nie znaleziono leada." };
+  if (lead.kind !== "studio")
+    return { ok: false, error: "Tylko lead typu „studio” mozna zamienic na studio." };
+
+  const p = (lead.payload || {}) as Record<string, string>;
+  const email = (p.email || "").trim().toLowerCase();
+  const businessName = (p.nazwa || "").trim();
+  if (!email || !businessName)
+    return { ok: false, error: "Lead nie zawiera e-maila lub nazwy firmy." };
+
+  const res = await createStudio({
+    email,
+    business_name: businessName,
+    address: p.miasto || undefined,
+    instagram: p.instagram || undefined,
+    phone: p.telefon || undefined,
+  });
+
+  if (!res.ok) return { ok: false, error: res.error };
+
+  await admin
+    .from("landing_leads")
+    .update({ status: "handled", handled_at: new Date().toISOString() })
+    .eq("id", leadId);
+
+  revalidatePath("/admin/leady");
+  revalidatePath("/admin/studia");
+  revalidatePath("/admin");
+
+  return { ok: true, message: res.message };
 }
