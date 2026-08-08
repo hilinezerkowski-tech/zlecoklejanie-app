@@ -93,18 +93,24 @@ export async function POST(req: NextRequest) {
         .limit(1)
         .single();
       if (assignment) {
+        // Kontakt studia jest w profiles (studios.id === profiles.id), nie w studios
         const { data: studio } = await admin
           .from("studios")
-          .select("email, business_name")
+          .select("business_name")
           .eq("id", assignment.studio_id)
           .single();
-        if (studio?.email) {
+        const { data: studioProfile } = await admin
+          .from("profiles")
+          .select("email")
+          .eq("id", assignment.studio_id)
+          .single();
+        if (studioProfile?.email) {
           await sendEmail(
-            studio.email,
+            studioProfile.email,
             `Nowe zlecenie do wyceny: ${orderLabel}`,
             layout(
               "Masz nowe zlecenie do wyceny",
-              `<p>Czesc ${studio.business_name},</p>
+              `<p>Czesc ${studio?.business_name ?? ""},</p>
                <p>Klient szuka wykonawcy: <strong>${orderLabel}</strong>.</p>
                <p>Zaloguj sie i wyslij wycene — maksymalnie 3 studia dostaja to zapytanie, wiec masz realna szanse.</p>`,
               `${APP_URL}/studio/zlecenia/${order.id}`,
@@ -154,12 +160,17 @@ export async function POST(req: NextRequest) {
       if (quote) {
         const { data: studio } = await admin
           .from("studios")
-          .select("email, business_name, phone")
+          .select("business_name")
           .eq("id", quote.studio_id)
           .single();
-        if (studio?.email) {
+        const { data: studioProfile } = await admin
+          .from("profiles")
+          .select("email, phone")
+          .eq("id", quote.studio_id)
+          .single();
+        if (studioProfile?.email) {
           await sendEmail(
-            studio.email,
+            studioProfile.email,
             `Klient wybral Twoja oferte! ${orderLabel}`,
             layout(
               "Gratulacje — klient wybral Twoje studio",
@@ -171,14 +182,14 @@ export async function POST(req: NextRequest) {
             )
           );
         }
-        if (client?.email && studio) {
+        if (client?.email && studioProfile) {
           await sendEmail(
             client.email,
             `Potwierdzenie wyboru studia: ${orderLabel}`,
             layout(
               "Wybrales studio — co dalej?",
-              `<p>Twoje zlecenie <strong>${orderLabel}</strong> trafilo do: <strong>${studio.business_name}</strong>.</p>
-               <p>Kontakt do studia: <strong>${studio.email}</strong>${studio.phone ? ` / ${studio.phone}` : ""}.</p>
+              `<p>Twoje zlecenie <strong>${orderLabel}</strong> trafilo do: <strong>${studio?.business_name ?? "wybrane studio"}</strong>.</p>
+               <p>Kontakt do studia: <strong>${studioProfile.email}</strong>${studioProfile.phone ? ` / ${studioProfile.phone}` : ""}.</p>
                <p>Studio rowniez dostalo Twoj kontakt i moze odezwac sie pierwsze.</p>`,
               `${APP_URL}/klient/zlecenia/${order.id}`,
               "Zobacz zlecenie"
