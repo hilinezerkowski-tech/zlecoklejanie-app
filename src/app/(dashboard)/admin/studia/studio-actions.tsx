@@ -7,9 +7,11 @@ import { useRouter } from "next/navigation";
 export function StudioActions({
   studioId,
   currentStatus,
+  verifiedAt,
 }: {
   studioId: string;
   currentStatus: string;
+  verifiedAt?: string | null;
 }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -25,6 +27,18 @@ export function StudioActions({
     setLoading(false);
   }
 
+  // Weryfikacja jest niezalezna od statusu: 'active' = moze wyceniac,
+  // 'verified_at' = sprawdzilismy firme (NIP, adres, realizacje).
+  async function toggleVerified() {
+    setLoading(true);
+    await supabase
+      .from("studios")
+      .update({ verified_at: verifiedAt ? null : new Date().toISOString() })
+      .eq("id", studioId);
+    router.refresh();
+    setLoading(false);
+  }
+
   if (loading) {
     return (
       <span className="text-xs text-brand-chrom animate-pulse">
@@ -34,7 +48,22 @@ export function StudioActions({
   }
 
   return (
-    <div className="flex gap-2 ml-4 shrink-0">
+    <div className="flex gap-2 ml-4 shrink-0 flex-wrap justify-end">
+      <button
+        onClick={toggleVerified}
+        title={
+          verifiedAt
+            ? "Cofnij weryfikacje — odznaka zniknie klientom"
+            : "Oznacz jako zweryfikowane — klienci zobacza odznake przy wycenie"
+        }
+        className={`px-3 py-1.5 text-xs rounded-lg transition font-medium ${
+          verifiedAt
+            ? "bg-teal-400/15 text-teal-400 hover:bg-teal-400/25"
+            : "bg-white/5 text-brand-chrom hover:text-brand-kosc hover:bg-white/10"
+        }`}
+      >
+        {verifiedAt ? "✓ Zweryfikowane" : "Zweryfikuj"}
+      </button>
       {currentStatus === "pending" && (
         <>
           <button
