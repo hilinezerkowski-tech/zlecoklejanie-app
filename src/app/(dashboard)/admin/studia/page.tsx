@@ -31,6 +31,7 @@ export default async function StudiaPage({
       google_rating,
       google_reviews_count,
       status,
+      verified_at,
       rejection_reason,
       created_at,
       profile:profiles!studios_id_fkey(email, full_name, phone)
@@ -113,6 +114,11 @@ export default async function StudiaPage({
                       >
                         {st.label}
                       </span>
+                      {studio.verified_at && (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-teal-400/15 text-teal-400">
+                          ✓ Zweryfikowane
+                        </span>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-brand-chrom">
                       {studio.address && (
@@ -169,6 +175,7 @@ export default async function StudiaPage({
                   <StudioActions
                     studioId={studio.id}
                     currentStatus={studio.status}
+                    verifiedAt={studio.verified_at}
                   />
                 </div>
               </div>
