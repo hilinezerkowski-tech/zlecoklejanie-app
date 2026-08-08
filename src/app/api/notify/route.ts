@@ -15,7 +15,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 
 const FROM = "ZlecOklejanie.pl <powiadomienia@zlecoklejanie.pl>";
-const APP_URL = "https://zlecoklejanie-app.vercel.app";
+// Docelowy adres aplikacji — z env (ten sam, ktorego uzywa magic link),
+// z fallbackiem na domene Vercela.
+const APP_URL =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+  "https://zlecoklejanie-app.vercel.app";
 
 async function sendEmail(to: string, subject: string, html: string) {
   const key = process.env.RESEND_API_KEY;
