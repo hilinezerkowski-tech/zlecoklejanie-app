@@ -1,30 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  APP_URL,
+  SITE_URL,
+  emailLayout,
+  escapeHtml,
+  isValidEmail,
+  sendEmail,
+} from "@/lib/email";
 
 /**
- * Alert e-mail do admina o nowym leadzie z landing page.
+ * Obsluga nowego leada z landing page — dwa maile:
+ *  1. ALERT do admina (pelna tresc zgloszenia + link do skrzynki leadow),
+ *  2. AUTORESPONDER do zglaszajacego (potwierdzenie, ze zgloszenie dotarlo).
  *
- * Wolany przez Supabase Database Webhook (INSERT na landing_leads).
- * Payload webhooka: { type: "INSERT", table: "landing_leads", record: {...} }
+ * Wolany przez trigger PostgreSQL (pg_net) na INSERT do landing_leads.
+ * Payload: { type: "INSERT", table: "landing_leads", record: {...} }
  * Akceptujemy tez { leadId: "..." } do recznego wyzwolenia.
  *
- * BEZPIECZENSTWO — endpoint jest publiczny (webhook nie wysyla naglowkow
+ * BEZPIECZENSTWO — endpoint jest publiczny (trigger nie wysyla naglowkow
  * autoryzacyjnych), wiec zamiast sekretu ograniczamy to, co da sie nim zrobic:
- *  - adres odbiorcy jest STALY (admin), nie pochodzi z requestu,
- *  - tresc pochodzi wylacznie z bazy, po ID — caller nie wstrzyknie tekstu,
+ *  - adres admina jest STALY, nie pochodzi z requestu,
+ *  - tresc i adres zglaszajacego pochodza WYLACZNIE z bazy, po ID —
+ *    caller podaje tylko identyfikator, nie da sie wstrzyknac tekstu ani adresu,
  *  - wysylamy tylko dla leada o statusie 'new' i mlodszego niz 10 minut,
  *    wiec nie da sie odpalac powiadomien w kolko dla starych rekordow.
  * Najgorszy scenariusz naduzycia: jednorazowy mail o realnym, swiezym leadzie.
  */
 
-const FROM = "ZlecOklejanie.pl <powiadomienia@zlecoklejanie.pl>";
 // UWAGA: kontakt@zlecoklejanie.pl NIE ma skrzynki odbiorczej — rekord MX domeny
 // obsluguje tylko bounce z Resend przy wysylce. Alerty ida na adres, ktory
 // realnie czytamy. Mozna nadpisac zmienna ADMIN_ALERT_EMAIL w Vercelu.
 const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL || "hiline.zerkowski@gmail.com";
-const APP_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-  "https://zlecoklejanie-app.vercel.app";
 
 const MAX_AGE_MS = 10 * 60 * 1000;
 
@@ -48,31 +55,81 @@ const fieldLabels: Record<string, string> = {
   telefon: "Telefon",
 };
 
-function escapeHtml(s: string) {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+/**
+ * Tresc autorespondera zalezna od typu zgloszenia.
+ * `name` jest juz zescapowany przez wolajacego.
+ */
+function autoReply(kind: string, name: string) {
+  const hello = name ? `Cześć ${name},` : "Cześć,";
+
+  if (kind === "studio") {
+    return {
+      subject: "Zgłoszenie studia przyjęte — ZlecOklejanie.pl",
+      title: "Mamy Twoje zgłoszenie",
+      body: `<p>${hello}</p>
+        <p>Dziękujemy za chęć dołączenia do ZlecOklejanie.pl. Zgłoszenie trafiło do nas i sprawdzamy je ręcznie — <strong>odezwiemy się w ciągu 24 godzin</strong> z dostępem do panelu.</p>
+        <p><strong>Co dostajesz:</strong></p>
+        <ul style="padding-left:18px;margin:8px 0;">
+          <li>Dostęp do zapytań jest <strong>całkowicie bezpłatny</strong> — nie płacisz za kontakt ani za leada.</li>
+          <li>Każde zlecenie trafia do <strong>maksymalnie 3 studiów</strong>, nie do kilkunastu naraz.</li>
+          <li>Zapytania przechodzą przez branżowy formularz — wiesz co, na czym i w jakim zakresie, zanim odpiszesz.</li>
+          <li>Wyceniasz tylko to, co Ci pasuje. Reszta Cię nie obchodzi.</li>
+        </ul>
+        <p>Jeśli chcesz coś dopowiedzieć o swoim studiu — po prostu odpisz na tego maila.</p>`,
+      ctaUrl: SITE_URL,
+      ctaLabel: "Zobacz, jak to działa",
+      footer:
+        "Ten e-mail wysłano automatycznie po wypełnieniu formularza na zlecoklejanie.pl. Jeśli to nie Ty — zignoruj tę wiadomość.",
+    };
+  }
+
+  if (kind === "grafik") {
+    return {
+      subject: "Zgłoszenie grafika przyjęte — ZlecOklejanie.pl",
+      title: "Mamy Twoje zgłoszenie",
+      body: `<p>${hello}</p>
+        <p>Dziękujemy za zgłoszenie do sekcji dla grafików. Przejrzymy Twoje portfolio i <strong>odezwiemy się w ciągu 24 godzin</strong>.</p>
+        <p>Każde oklejenie zaczyna się od projektu — a klienci na rynku szukają grafika osobno i po omacku. Dlatego zbieramy grafików ogarniających rozkładówki na auta i podpinamy ich pod realne zlecenia.</p>
+        <p>Jeśli masz linki do prac, których nie było w formularzu — odpisz na tego maila.</p>`,
+      ctaUrl: SITE_URL,
+      ctaLabel: "Zobacz, jak to działa",
+      footer:
+        "Ten e-mail wysłano automatycznie po wypełnieniu formularza na zlecoklejanie.pl. Jeśli to nie Ty — zignoruj tę wiadomość.",
+    };
+  }
+
+  // Domyslnie: klient szukajacy wykonawcy
+  return {
+    subject: "Przyjęliśmy Twoje zapytanie — ZlecOklejanie.pl",
+    title: "Zapytanie przyjęte",
+    body: `<p>${hello}</p>
+      <p>Dostaliśmy Twoje zapytanie i już dobieramy do niego wykonawców.</p>
+      <p><strong>Co się teraz stanie:</strong></p>
+      <ul style="padding-left:18px;margin:8px 0;">
+        <li>Wybieramy <strong>maksymalnie 3 studia</strong> pasujące do zakresu i lokalizacji.</li>
+        <li>Odezwiemy się w ciągu 24 godzin — telefonicznie lub mailem.</li>
+        <li><strong>Nie płacisz nic</strong> za kontakt ani za wycenę. Decyzja zawsze po Twojej stronie.</li>
+      </ul>
+      <p>Jeśli chcesz dorzucić zdjęcia auta albo projekt — odpisz na tego maila, trafi to prosto do nas.</p>`,
+    ctaUrl: SITE_URL,
+    ctaLabel: "Wróć na stronę",
+    footer:
+      "Ten e-mail wysłano automatycznie po wypełnieniu formularza na zlecoklejanie.pl. Jeśli to nie Ty — zignoruj tę wiadomość.",
+  };
 }
 
 export async function POST(req: NextRequest) {
-  let body: any;
+  let body: unknown;
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "bad json" }, { status: 400 });
   }
 
-  const leadId: string | undefined = body?.record?.id || body?.leadId;
+  const b = (body || {}) as { record?: { id?: string }; leadId?: string };
+  const leadId = b.record?.id || b.leadId;
   if (!leadId) {
     return NextResponse.json({ error: "no lead id" }, { status: 400 });
-  }
-
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    console.warn("[lead-alert] RESEND_API_KEY not set — skipping");
-    return NextResponse.json({ ok: true, skipped: "no api key" });
   }
 
   const admin = createAdminClient();
@@ -93,6 +150,9 @@ export async function POST(req: NextRequest) {
   }
 
   const p = (lead.payload || {}) as Record<string, string>;
+  const leadEmail = isValidEmail(p.email) ? p.email.trim() : null;
+
+  // ---- 1. Alert do admina ----------------------------------------------
   const rows = Object.entries(p)
     .filter(([, v]) => v && String(v).trim())
     .map(
@@ -106,39 +166,48 @@ export async function POST(req: NextRequest) {
     .join("");
 
   const kindLabel = kindLabels[lead.kind] || lead.kind;
-  const subject = `Nowy lead (${lead.kind}): ${p.nazwa || p.auto || p.miasto || p.email || ""}`.trim();
+  const adminSubject =
+    `Nowy lead (${lead.kind}): ${p.nazwa || p.auto || p.miasto || p.email || ""}`.trim();
 
-  const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a1a1a;">
-    <p style="font-size:20px;font-weight:800;margin:0 0 16px;">zlec<span style="color:#a3c644;">oklejanie</span>.pl</p>
-    <h2 style="font-size:18px;margin:0 0 4px;">Nowe zgloszenie z formularza</h2>
-    <p style="font-size:14px;color:#666;margin:0 0 16px;">Typ: ${escapeHtml(kindLabel)}</p>
-    <table style="font-size:14px;line-height:1.5;border-collapse:collapse;">${rows}</table>
-    <p style="margin:24px 0;">
-      <a href="${APP_URL}/admin/leady?status=new" style="background:#c6f232;color:#1a1a1a;padding:12px 20px;border-radius:10px;text-decoration:none;font-weight:700;">Otworz skrzynke leadow</a>
-    </p>
-    <p style="font-size:12px;color:#888;">Lead klienta zamienisz na zlecenie jednym kliknieciem w panelu.</p>
-  </div>`;
+  const adminHtml = emailLayout({
+    title: "Nowe zgloszenie z formularza",
+    body: `<p style="font-size:14px;color:#666;margin:0 0 16px;">Typ: ${escapeHtml(
+      kindLabel
+    )}</p>
+      <table style="font-size:14px;line-height:1.5;border-collapse:collapse;">${rows}</table>`,
+    ctaUrl: `${APP_URL}/admin/leady?status=new`,
+    ctaLabel: "Otworz skrzynke leadow",
+    footer:
+      "Lead klienta zamienisz na zlecenie jednym kliknieciem w panelu. Zglaszajacy dostal juz automatyczne potwierdzenie.",
+  });
 
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: FROM,
-        to: [ADMIN_EMAIL],
-        subject,
-        html,
+  // replyTo: odpisujesz prosto do zglaszajacego z poziomu swojej skrzynki.
+  const adminSent = await sendEmail(
+    ADMIN_EMAIL,
+    adminSubject,
+    adminHtml,
+    leadEmail ? { replyTo: leadEmail } : undefined
+  );
+
+  // ---- 2. Autoresponder do zglaszajacego --------------------------------
+  // Adres pochodzi z bazy (rekord wstawiony przez formularz), nie z requestu.
+  let replySent = false;
+  if (leadEmail) {
+    const name = escapeHtml((p.nazwa || "").trim().split(/\s+/)[0] || "");
+    const tpl = autoReply(lead.kind, name);
+    replySent = await sendEmail(
+      leadEmail,
+      tpl.subject,
+      emailLayout({
+        title: tpl.title,
+        body: tpl.body,
+        ctaUrl: tpl.ctaUrl,
+        ctaLabel: tpl.ctaLabel,
+        footer: tpl.footer,
       }),
-    });
-    if (!res.ok) {
-      console.error("[lead-alert] Resend error:", res.status, await res.text());
-    }
-  } catch (e) {
-    console.error("[lead-alert] send failed:", e);
+      { replyTo: ADMIN_EMAIL }
+    );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, adminSent, replySent });
 }
