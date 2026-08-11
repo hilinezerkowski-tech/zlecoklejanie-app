@@ -26,6 +26,9 @@ export default async function Home() {
     case "client":
       redirect("/klient");
       break;
+    case "designer":
+      redirect("/grafik");
+      break;
     default:
       redirect("/login");
   }
