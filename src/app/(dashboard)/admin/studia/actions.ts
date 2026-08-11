@@ -122,6 +122,23 @@ export async function createStudio(
   }
 
   const admin = createAdminClient();
+
+  // Zabezpieczenie: NIGDY nie degradujemy konta admina.
+  // Bez tego dodanie studia na adres admina nadpisuje role='admin'
+  // i operator traci dostep do panelu — cicho, bez zadnego ostrzezenia.
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("email", email)
+    .maybeSingle();
+  if (existingProfile?.role === "admin") {
+    return {
+      ok: false,
+      error:
+        "Ten e-mail należy do konta administratora. Użyj innego adresu — " +
+        "inaczej stracisz dostęp do panelu.",
+    };
+  }
   let userId: string | undefined;
 
   // 2. Utwórz konto auth (bez hasła — logowanie magic-linkiem). Rola 'studio'
