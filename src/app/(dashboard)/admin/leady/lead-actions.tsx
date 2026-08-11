@@ -2,7 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { convertLeadToOrder, convertLeadToStudio, setLeadStatus } from "./actions";
+import {
+  convertLeadToOrder,
+  convertLeadToDesigner,
+  convertLeadToStudio,
+  setLeadStatus,
+} from "./actions";
 
 export default function LeadActions({
   leadId,
@@ -23,6 +28,7 @@ export default function LeadActions({
   const canConvert = kind === "zlecenie" && !orderId && status !== "spam";
   // Lead studia mozna promowac na konto studia, dopoki nie jest obsluzony.
   const canMakeStudio = kind === "studio" && status === "new";
+  const canMakeDesigner = kind === "grafik" && status === "new";
 
   function run(fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) {
     setMsg(null);
@@ -55,6 +61,15 @@ export default function LeadActions({
             {pending ? "…" : "Utwórz studio"}
           </button>
         )}
+      {canMakeDesigner && (
+        <button
+          onClick={() => run(() => convertLeadToDesigner(leadId))}
+          disabled={pending}
+          className="px-3 py-1.5 text-xs bg-brand-lime/15 text-brand-lime rounded-lg hover:bg-brand-lime/25 transition font-medium disabled:opacity-50"
+        >
+          {pending ? "…" : "Utwórz grafika"}
+        </button>
+      )}
 
         {orderId && (
           <a
