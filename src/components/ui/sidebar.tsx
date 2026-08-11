@@ -17,6 +17,7 @@ const menuItems: Record<string, { label: string; href: string; icon: string }[]>
     { label: "Leady", href: "/admin/leady", icon: "📥" },
     { label: "Zlecenia", href: "/admin/zlecenia", icon: "📋" },
     { label: "Studia", href: "/admin/studia", icon: "🏢" },
+    { label: "Graficy", href: "/admin/graficy", icon: "🎨" },
     { label: "Ustawienia", href: "/admin/ustawienia", icon: "⚙️" },
   ],
   studio: [
@@ -44,6 +45,7 @@ export function Sidebar({ role, name, email }: SidebarProps) {
     admin: "Administrator",
     studio: "Studio",
     client: "Klient",
+    designer: "Grafik",
   };
 
   return (
