@@ -62,6 +62,9 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/klient") && role !== "client") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
+  if (pathname.startsWith("/grafik") && role !== "designer") {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
 
   return supabaseResponse;
 }
