@@ -29,6 +29,10 @@ const menuItems: Record<string, { label: string; href: string; icon: string }[]>
   client: [
     { label: "Moje zlecenia", href: "/klient", icon: "📋" },
   ],
+  designer: [
+    { label: "Dashboard", href: "/grafik", icon: "📊" },
+    { label: "Mój profil", href: "/grafik/profil", icon: "🎨" },
+  ],
 };
 
 export function Sidebar({ role, name, email }: SidebarProps) {
