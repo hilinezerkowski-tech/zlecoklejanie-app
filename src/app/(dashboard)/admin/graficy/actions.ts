@@ -143,6 +143,23 @@ export async function createDesigner(
   }
 
   const admin = createAdminClient();
+
+  // Zabezpieczenie: NIGDY nie degradujemy konta admina.
+  // Bez tego dodanie grafika na adres admina nadpisuje role='admin'
+  // i operator traci dostep do panelu — cicho, bez zadnego ostrzezenia.
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("role")
+    .eq("email", email)
+    .maybeSingle();
+  if (existingProfile?.role === "admin") {
+    return {
+      ok: false,
+      error:
+        "Ten e-mail należy do konta administratora. Użyj innego adresu — " +
+        "inaczej stracisz dostęp do panelu.",
+    };
+  }
   let userId: string | undefined;
 
   // 2. Konto auth bez hasla (logowanie magic-linkiem). Role 'designer'
