@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { QuoteForm } from "./quote-form";
+import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
 
 // Etykiety spójne z listą zleceń i panelem admina
 const serviceLabels: Record<string, string> = {
@@ -61,6 +62,23 @@ export default async function StudioOrderDetailPage({
     .maybeSingle();
 
   const photos: string[] = Array.isArray(order.photos) ? order.photos : [];
+
+  // Rozstrzygniecie: czy klient juz wybral studio i czy to MY wygralismy
+  const decided = ["chosen", "completed"].includes(order.status);
+  const won = decided && existingQuote?.status === "chosen";
+  const lost = decided && !won;
+
+  // Kontakt do klienta — RPC SECURITY DEFINER wydaje dane tylko wybranemu
+  // studiu po rozstrzygnieciu (patrz migracja 010)
+  let contact: OrderContact | null = null;
+  if (won) {
+    const { data: contactRows } = await supabase.rpc("get_order_contact", {
+      p_order_id: params.id,
+    });
+    if (Array.isArray(contactRows) && contactRows.length > 0) {
+      contact = contactRows[0] as OrderContact;
+    }
+  }
 
   return (
     <div className="max-w-3xl">
@@ -124,6 +142,19 @@ export default async function StudioOrderDetailPage({
               className="rounded-xl border border-brand-border object-cover w-full h-32"
             />
           ))}
+        </div>
+      )}
+
+      {/* Wynik rozstrzygniecia */}
+      {won && contact && <ContactCard contact={contact} />}
+      {lost && (
+        <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6 mb-6">
+          <h2 className="font-semibold mb-2">Klient wybrał inne studio</h2>
+          <p className="text-sm text-brand-chrom">
+            Tym razem się nie udało — klient zdecydował się na inną ofertę.
+            Twoja wycena pozostaje w historii poniżej. Kolejne zlecenia z
+            Twojego regionu trafią do Ciebie automatycznie.
+          </p>
         </div>
       )}
 
