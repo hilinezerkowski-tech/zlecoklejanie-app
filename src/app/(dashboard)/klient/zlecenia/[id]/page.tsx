@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChooseQuoteButton } from "./choose-quote-button";
+import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
 
 // Etykiety spojne z pozostalymi panelami
 const serviceLabels: Record<string, string> = {
@@ -91,6 +92,18 @@ export default async function ClientOrderDetailPage({
   const decided = ["chosen", "completed", "cancelled"].includes(order.status);
   const list = quotes ?? [];
 
+  // Kontakt do wybranego studia — RPC SECURITY DEFINER wydaje dane tylko
+  // stronom rozstrzygnietego zlecenia (patrz migracja 010)
+  let contact: OrderContact | null = null;
+  if (["chosen", "completed"].includes(order.status)) {
+    const { data: contactRows } = await supabase.rpc("get_order_contact", {
+      p_order_id: params.id,
+    });
+    if (Array.isArray(contactRows) && contactRows.length > 0) {
+      contact = contactRows[0] as OrderContact;
+    }
+  }
+
   return (
     <div className="max-w-3xl">
       <Link
@@ -159,6 +172,9 @@ export default async function ClientOrderDetailPage({
           ))}
         </div>
       )}
+
+      {/* Kontakt do wybranego studia */}
+      {contact && <ContactCard contact={contact} />}
 
       {/* Oferty */}
       <div className="flex items-baseline justify-between mb-4">
