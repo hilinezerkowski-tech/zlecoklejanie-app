@@ -84,7 +84,43 @@ export async function POST(req: NextRequest) {
   if (!order) {
     return NextResponse.json({ error: "order not found" }, { status: 404 });
   }
-  const orderLabel = `${order.car_brand} ${order.car_model} — ${order.city}`;
+
+  // =========================================================
+  // AUTORYZACJA PER TYP POWIADOMIENIA
+  // Bez tego kazdy zalogowany uzytkownik mogl triggerowac maile
+  // (w tym z danymi kontaktowymi) dla cudzych zlecen.
+  //   assigned -> tylko admin (przypisania robi panel admina)
+  //   quoted   -> tylko studio przypisane do TEGO zlecenia
+  //   chosen   -> tylko wlasciciel (klient) TEGO zlecenia
+  // =========================================================
+  if (type === "assigned") {
+    const { data: callerProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (callerProfile?.role !== "admin") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  } else if (type === "quoted") {
+    const { data: callerAssignment } = await admin
+      .from("order_assignments")
+      .select("id")
+      .eq("order_id", orderId)
+      .eq("studio_id", user.id)
+      .maybeSingle();
+    if (!callerAssignment) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  } else if (type === "chosen") {
+    if (order.client_id !== user.id) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  }
+  // Null-safe: zlecenia bez danych auta (np. sama grafika) nie moga
+  // generowac tematow typu "null null — Warszawa"
+  const carPart = [order.car_brand, order.car_model].filter(Boolean).join(" ");
+  const orderLabel = carPart ? `${carPart} — ${order.city}` : `${order.city}`;
 
   try {
     if (type === "assigned") {
