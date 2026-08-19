@@ -58,7 +58,7 @@ export function ContactCard({ contact }: { contact: OrderContact }) {
       {!contact.phone && !contact.email && (
         <p className="text-sm text-brand-chrom">
           Druga strona nie uzupelnila jeszcze danych kontaktowych. Napisz do
-          nas na hiline.zerkowski@gmail.com — skojarzymy Was recznie.
+          nas na kontakt@zlecoklejanie.pl — skojarzymy Was recznie.
         </p>
       )}
 
