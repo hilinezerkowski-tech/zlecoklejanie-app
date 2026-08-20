@@ -31,7 +31,7 @@ import {
 // UWAGA: kontakt@zlecoklejanie.pl NIE ma skrzynki odbiorczej — rekord MX domeny
 // obsluguje tylko bounce z Resend przy wysylce. Alerty ida na adres, ktory
 // realnie czytamy. Mozna nadpisac zmienna ADMIN_ALERT_EMAIL w Vercelu.
-const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL || "hiline.zerkowski@gmail.com";
+const ADMIN_EMAIL = process.env.ADMIN_ALERT_EMAIL || "zlecoklejaniepl@gmail.com";
 
 const MAX_AGE_MS = 10 * 60 * 1000;
 
