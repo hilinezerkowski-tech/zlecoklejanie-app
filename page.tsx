@@ -1,17 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [mode, setMode] = useState<"magic" | "password">("magic");
   const [password, setPassword] = useState("");
+  const searchParams = useSearchParams();
 
   const supabase = createClient();
+
+  // Obsługa błędów z URL (?error=link / ?error=auth)
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError === "link") {
+      setError("Link logowania wygasł lub został już użyty. Poproś o nowy poniżej.");
+    } else if (urlError === "auth") {
+      setError("Błąd logowania — spróbuj ponownie.");
+    }
+  }, [searchParams]);
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
@@ -24,7 +36,15 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setError("Nie udało się wysłać linku. Spróbuj ponownie.");
+      if (
+        error.status === 429 ||
+        error.message?.includes("rate_limit") ||
+        error.message?.includes("email_send_rate_limit")
+      ) {
+        setError("Poczekaj minutę przed ponownym wysłaniem linku.");
+      } else {
+        setError("Nie udało się wysłać linku. Spróbuj ponownie.");
+      }
     } else {
       setSent(true);
     }
@@ -131,7 +151,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="•••••••"
                 required
                 className="w-full px-4 py-3 bg-brand-grafit border border-brand-border rounded-xl text-brand-kosc placeholder:text-brand-chrom/50 focus:outline-none focus:border-brand-lime transition"
               />
@@ -167,5 +187,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
