@@ -54,7 +54,7 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
 
     const radius = parseInt(form.service_radius_km, 10);
 
-    const { error: updErr } = await supabase
+    const { data: updated, error: updErr } = await supabase
       .from("studios")
       .update({
         business_name: form.business_name.trim() || null,
@@ -66,10 +66,20 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
         address: form.address.trim() || null,
         service_radius_km: Number.isFinite(radius) ? radius : 50,
       })
-      .eq("id", studio.id);
+      .eq("id", studio.id)
+      .select();
 
     if (updErr) {
+      console.error("[ProfileForm] update error:", updErr);
       setError(`Nie udało się zapisać: ${updErr.message}`);
+    } else if (!updated || updated.length === 0) {
+      // RLS zablokował zapis lub rekord nie istnieje — informujemy jasno
+      console.warn("[ProfileForm] update returned 0 rows for studio", studio.id);
+      setError(
+        "Zapis nie powiódł się — brak uprawnień lub profil nie istnieje. " +
+        "Odśwież stronę i spróbuj ponownie. Jeśli problem się powtarza, " +
+        "napisz do nas."
+      );
     } else {
       setSuccess("Zapisano.");
       router.refresh();
