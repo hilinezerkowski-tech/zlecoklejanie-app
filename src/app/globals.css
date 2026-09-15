@@ -8,4 +8,14 @@
   body {
     @apply bg-brand-grafit text-brand-kosc antialiased;
   }
+
+  /* iOS Safari: pola <16px powodują auto-zoom strony po tapnięciu.
+     Na mobile wymuszamy 16px, na desktopie zostają rozmiary z klas Tailwind. */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
 }
