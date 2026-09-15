@@ -95,7 +95,7 @@ export function Sidebar({ role, name, email }: SidebarProps) {
       {/* Overlay (mobile) */}
       {mobileOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-black/60 z-40"
+          className="md:hidden fixed inset-0 bg-black/60 z-40 touch-none"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -135,7 +135,7 @@ export function Sidebar({ role, name, email }: SidebarProps) {
         </div>
 
         {/* Menu */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto overscroll-contain">
           {items.map((item) => {
             const isActive = pathname === item.href ||
               (item.href !== `/${role === "client" ? "klient" : role}` && pathname.startsWith(item.href));
