@@ -24,7 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         email={profile.email}
         avatarUrl={profile.avatar_url}
       />
-      <main className="flex-1 ml-64 p-8">
+      <main className="flex-1 md:ml-64 p-4 pt-[72px] md:p-8 md:pt-8">
         {children}
       </main>
     </div>
