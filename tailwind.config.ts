@@ -1,6 +1,8 @@
 import type { Config } from "tailwindcss";
 const config: Config = {
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
+  // Na ekranach dotykowych (iOS) hover: nie "zawiesza się" po tapnięciu — działa tylko z myszką
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       colors: {
