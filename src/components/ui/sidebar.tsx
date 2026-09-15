@@ -103,7 +103,7 @@ export function Sidebar({ role, name, email }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={`
-          fixed left-0 top-0 w-64 h-screen bg-brand-grafit-light border-r border-brand-border flex flex-col z-50
+          fixed left-0 top-0 w-64 h-dvh bg-brand-grafit-light border-r border-brand-border flex flex-col z-50
           transition-transform duration-200 ease-in-out
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
           md:translate-x-0
