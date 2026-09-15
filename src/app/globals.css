@@ -7,6 +7,8 @@
 @layer base {
   body {
     @apply bg-brand-grafit text-brand-kosc antialiased;
+    /* iOS Safari: bez szarego błysku przy tapnięciu w przyciski i linki */
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* iOS Safari: pola <16px powodują auto-zoom strony po tapnięciu.
