@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createStudio } from "./actions";
+import { adresZKodem, normalizujKod } from "@/lib/kod-pocztowy";
 
 export function AddStudioForm() {
   const [open, setOpen] = useState(false);
@@ -16,6 +17,7 @@ export function AddStudioForm() {
     business_name: "",
     city: "",
     address: "",
+    kod: "",
     instagram: "",
     phone: "",
     nip: "",
@@ -32,11 +34,19 @@ export function AddStudioForm() {
     setError("");
     setSuccess("");
 
+    // Kod pocztowy: opcjonalny, ale jeśli podany — musi mieć format 00-000.
+    // Doklejamy go do adresu ("ul. Długa 48, 05-090 Łady"), bez nowej kolumny w bazie.
+    if (normalizujKod(form.kod) === "") {
+      setError("Kod pocztowy w formacie 00-000.");
+      setLoading(false);
+      return;
+    }
+
     // Cała logika tworzenia konta dzieje się w Server Action (service role).
     const res = await createStudio({
       email: form.email,
       business_name: form.business_name,
-      address: form.address,
+      address: adresZKodem(form.address, form.kod) || undefined,
       instagram: form.instagram,
       phone: form.phone,
       nip: form.nip,
@@ -52,6 +62,7 @@ export function AddStudioForm() {
         business_name: "",
         city: "",
         address: "",
+        kod: "",
         instagram: "",
         phone: "",
         nip: "",
@@ -109,6 +120,20 @@ export function AddStudioForm() {
             onChange={(e) => update("business_name", e.target.value)}
             required
             placeholder="Wrap Studio XYZ"
+            className="w-full px-3 py-2 bg-brand-grafit border border-brand-border rounded-xl text-sm text-brand-kosc placeholder:text-brand-chrom/40 focus:outline-none focus:border-brand-lime transition"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-brand-chrom mb-1">
+            Kod pocztowy <span className="text-brand-chrom/60">(do liczenia km)</span>
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={form.kod}
+            onChange={(e) => update("kod", e.target.value)}
+            placeholder="05-090"
+            maxLength={6}
             className="w-full px-3 py-2 bg-brand-grafit border border-brand-border rounded-xl text-sm text-brand-kosc placeholder:text-brand-chrom/40 focus:outline-none focus:border-brand-lime transition"
           />
         </div>

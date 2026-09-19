@@ -34,6 +34,7 @@ const fieldLabels: Record<string, string> = {
   usluga: "Usługa",
   auto: "Auto",
   miasto: "Miasto",
+  kod_pocztowy: "Kod pocztowy",
   szczegoly: "Szczegóły",
   potrzebuje_grafika: "Potrzebuje grafika",
   nazwa: "Nazwa",
