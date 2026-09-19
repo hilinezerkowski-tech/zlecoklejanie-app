@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { createStudio } from "../studia/actions";
 import { createDesigner } from "../graficy/actions";
+import { adresZKodem, normalizujKod } from "@/lib/kod-pocztowy";
 
 export type LeadActionResult = {
   ok: boolean;
@@ -82,7 +83,10 @@ export async function convertLeadToOrder(leadId: string): Promise<LeadActionResu
 
   const p = (lead.payload || {}) as Record<string, string>;
   const email = (p.email || "").trim().toLowerCase();
-  const city = (p.miasto || "").trim();
+  // Kod pocztowy z formularza (opcjonalny) idzie przed nazwę: "05-090 Raszyn".
+  // Dzięki temu dystans do studiów liczy się jednoznacznie, bez nowej kolumny.
+  const kod = normalizujKod(p.kod_pocztowy);
+  const city = [kod, (p.miasto || "").trim()].filter(Boolean).join(" ");
   if (!email) return { ok: false, error: "Lead nie zawiera adresu e-mail." };
   if (!city) return { ok: false, error: "Lead nie zawiera miasta (pole wymagane w zleceniu)." };
 
@@ -217,7 +221,7 @@ export async function convertLeadToStudio(leadId: string): Promise<LeadActionRes
   const res = await createStudio({
     email,
     business_name: businessName,
-    address: p.miasto || undefined,
+    address: adresZKodem(p.miasto, p.kod_pocztowy) || undefined,
     instagram: p.instagram || undefined,
     phone: p.telefon || undefined,
   });
