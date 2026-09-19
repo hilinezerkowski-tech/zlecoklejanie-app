@@ -6,6 +6,10 @@
 // Dzięki temu 7 MB danych NIE trafia do bundla wysyłanego do przeglądarki.
 
 import miejscowosci from "polskie-miejscowosci";
+// Kody pocztowe -> współrzędne (ok. 22 tys. kodów, github.com/mberezinski/kody-pocztowe-geo, MIT).
+// Zapis kompaktowy: "KKKKK" + lat*1e4 (6 cyfr) + lon*1e4 (6 cyfr), rekordy rozdzielone ";".
+import kodyPocztowe from "./kody-pocztowe.json";
+import { kodZTekstu } from "./kod-pocztowy";
 
 type Rekord = {
   Name: string;
@@ -14,6 +18,9 @@ type Rekord = {
   Latitude: number;
   Longitude: number;
 };
+
+// Minimum potrzebne do liczenia dystansu (rekord miejscowości albo punkt z kodu pocztowego).
+type Punkt = { Latitude: number; Longitude: number; Province?: string };
 
 // 16 województw (znormalizowane) — do odrzucania członów adresu typu "łódzkie",
 // które nie są miejscowością, tylko regionem.
@@ -44,6 +51,27 @@ function getIndeks(): Map<string, Rekord[]> {
   }
   indeks = m;
   return m;
+}
+
+// Indeks kod pocztowy ("05090") -> punkt. Budowany raz, jak indeks nazw.
+let indeksKodow: Map<string, Punkt> | null = null;
+function getIndeksKodow(): Map<string, Punkt> {
+  if (indeksKodow) return indeksKodow;
+  const m = new Map<string, Punkt>();
+  for (const r of (kodyPocztowe as { d: string }).d.split(";")) {
+    m.set(r.slice(0, 5), {
+      Latitude: Number(r.slice(5, 11)) / 1e4,
+      Longitude: Number(r.slice(11, 17)) / 1e4,
+    });
+  }
+  indeksKodow = m;
+  return m;
+}
+
+// Współrzędne kodu pocztowego z tekstu, jeśli kod jest w bazie.
+export function punktZKodu(tekst: string | null | undefined): Punkt | null {
+  const k = kodZTekstu(tekst);
+  return k ? getIndeksKodow().get(k.replace("-", "")) ?? null : null;
 }
 
 // Znajdź współrzędne miejscowości. Gdy nazwa jest niejednoznaczna (np. "Sierosław"
@@ -95,7 +123,7 @@ function wojewodztwoZAdresu(address: string | null | undefined): string | null {
 }
 
 // Odległość po powierzchni Ziemi (wzór haversine), w kilometrach, zaokrąglona.
-export function dystansKm(a: Rekord, b: Rekord): number {
+export function dystansKm(a: Punkt, b: Punkt): number {
   const R = 6371;
   const toRad = (d: number) => (d * Math.PI) / 180;
   const dLat = toRad(b.Latitude - a.Latitude);
@@ -107,20 +135,29 @@ export function dystansKm(a: Rekord, b: Rekord): number {
 }
 
 // Posortuj studia rosnąco wg odległości od miasta zlecenia i dopisz pole odleglosc_km.
-// Miasto studia bierzemy z kolumny `city`, a gdy pusta — parsujemy z `address`.
+// Pozycja studia: kod pocztowy z adresu (jeśli jest), inaczej nazwa miejscowości.
 // Studia bez rozpoznanego miasta (odleglosc_km = null) lądują na końcu, alfabetycznie.
 export function sortujWgOdleglosci<
   T extends { city?: string | null; address?: string | null; business_name?: string }
 >(studia: T[], miastoZlecenia: string | null | undefined): (T & { odleglosc_km: number | null })[] {
-  const zlec = miastoZlecenia ? geokoduj(miastoZlecenia) : null;
+  // Zlecenie: najpierw kod pocztowy (np. "05-090 Raszyn"), potem sama nazwa.
+  const nazwaZlec = (miastoZlecenia || "").replace(/\d{2}-?\d{3}/, "").trim();
+  const zlecNazwa = nazwaZlec ? geokoduj(nazwaZlec) : null;
+  const zlec: Punkt | null = punktZKodu(miastoZlecenia) ?? zlecNazwa;
+  const wojZlec = zlecNazwa?.Province ?? null;
 
   const zWynikiem = studia.map((s) => {
     let odleglosc_km: number | null = null;
     if (zlec) {
-      const miasto = s.city || miastoZAdresu(s.address);
-      // brak województwa w adresie -> przy dwuznacznej nazwie preferuj woj. zlecenia
-      const woj = wojewodztwoZAdresu(s.address) ?? zlec.Province;
-      const rec = miasto ? geokoduj(miasto, woj) : null;
+      const tekst = [s.city, s.address].filter(Boolean).join(", ");
+      // 1) kod pocztowy w adresie studia — jednoznaczny
+      let rec: Punkt | null = punktZKodu(tekst);
+      // 2) nazwa miejscowości (+ województwo z adresu albo zlecenia przy dwuznacznych nazwach)
+      if (!rec) {
+        const miasto = s.city || miastoZAdresu(s.address);
+        const woj = wojewodztwoZAdresu(s.address) ?? wojZlec;
+        rec = miasto ? geokoduj(miasto, woj) : null;
+      }
       if (rec) odleglosc_km = dystansKm(zlec, rec);
     }
     return { ...s, odleglosc_km };
