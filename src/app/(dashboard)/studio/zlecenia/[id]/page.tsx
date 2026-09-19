@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { QuoteForm } from "./quote-form";
 import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
+import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 
 // Etykiety spójne z listą zleceń i panelem admina
 const serviceLabels: Record<string, string> = {
@@ -60,6 +61,16 @@ export default async function StudioOrderDetailPage({
     .eq("order_id", params.id)
     .eq("studio_id", user!.id)
     .maybeSingle();
+
+  // Rozmowa z klientem (RLS: studio widzi tylko własną rozmowę, po wycenie)
+  const { data: messages } = existingQuote
+    ? await supabase
+        .from("order_messages")
+        .select("id, sender_role, body, created_at")
+        .eq("order_id", params.id)
+        .eq("studio_id", user!.id)
+        .order("created_at", { ascending: true })
+    : { data: [] as any[] };
 
   const photos: string[] = Array.isArray(order.photos) ? order.photos : [];
 
@@ -195,6 +206,16 @@ export default async function StudioOrderDetailPage({
             {new Date(existingQuote.created_at).toLocaleDateString("pl-PL")}.
             Klient porówna oferty i wybierze studio.
           </p>
+
+          <MessageThread
+            orderId={order.id}
+            studioId={user!.id}
+            viewer="studio"
+            messages={(messages ?? []) as ThreadMessage[]}
+            otherPartyName="Klient"
+            canWrite={!lost && !["completed", "cancelled"].includes(order.status)}
+            closedNote="Rozmowa zamknięta."
+          />
         </div>
       ) : (
         <QuoteForm

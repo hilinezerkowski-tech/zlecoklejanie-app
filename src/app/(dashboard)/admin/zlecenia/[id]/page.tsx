@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { AssignStudioForm } from "./assign-form";
+import { OutcomeButtons } from "./outcome-buttons";
+import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 
 export default async function OrderDetailPage({
   params,
@@ -49,6 +51,32 @@ export default async function OrderDetailPage({
     .eq("order_id", id)
     .order("created_at", { ascending: true });
 
+  // Rozmowy klient <-> studia (admin: podgląd wszystkich)
+  const { data: messages } = await supabase
+    .from("order_messages")
+    .select("id, studio_id, sender_role, body, created_at")
+    .eq("order_id", id)
+    .order("created_at", { ascending: true });
+
+  // Historia powiadomień: maile powiązane ze zleceniem + maile z leada,
+  // z którego zlecenie powstało (autoresponder "przyjęliśmy zapytanie").
+  const { data: sourceLeads } = await supabase
+    .from("landing_leads")
+    .select("id")
+    .eq("order_id", id);
+  const leadIds = (sourceLeads || []).map((l: any) => l.id);
+
+  const logFilter =
+    leadIds.length > 0
+      ? `order_id.eq.${id},lead_id.in.(${leadIds.join(",")})`
+      : `order_id.eq.${id}`;
+
+  const { data: emailLog } = await supabase
+    .from("email_log")
+    .select("id, created_at, event, recipient, recipient_role, subject, status, provider_id, error")
+    .or(logFilter)
+    .order("created_at", { ascending: false });
+
   // Pobierz dostępne studia do przypisania
   const { data: availableStudios } = await supabase
     .from("studios")
@@ -85,6 +113,30 @@ export default async function OrderDetailPage({
     chosen: { label: "Wybrane", color: "bg-brand-lime/15 text-brand-lime" },
     completed: { label: "Zakończone", color: "bg-teal-400/15 text-teal-400" },
     cancelled: { label: "Anulowane", color: "bg-red-400/15 text-red-400" },
+  };
+
+  const eventLabels: Record<string, string> = {
+    assigned: "Nowe zlecenie do wyceny",
+    quoted: "Nowa oferta od studia",
+    chosen_studio: "Klient wybrał ofertę",
+    chosen_client: "Potwierdzenie wyboru studia",
+    lead_admin_alert: "Alert o nowym leadzie",
+    lead_autoreply: "Potwierdzenie przyjęcia zapytania",
+    message: "Nowa wiadomość w rozmowie",
+  };
+
+  const roleLabels: Record<string, string> = {
+    client: "Klient",
+    studio: "Studio",
+    designer: "Grafik",
+    admin: "Admin",
+    lead: "Klient (formularz)",
+  };
+
+  const logStatus: Record<string, { label: string; color: string }> = {
+    sent: { label: "Wysłano", color: "bg-brand-lime/15 text-brand-lime" },
+    failed: { label: "Błąd", color: "bg-red-400/15 text-red-400" },
+    skipped: { label: "Pominięto", color: "bg-gray-400/15 text-gray-400" },
   };
 
   const st = statusLabels[order.status] || {
@@ -299,6 +351,158 @@ export default async function OrderDetailPage({
           </div>
         </div>
       )}
+
+      {/* Wynik zlecenia */}
+      <div className="mt-6 bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
+        <h2 className="font-semibold mb-1">Wynik</h2>
+        {["completed", "cancelled"].includes(order.status) ? (
+          <p className="text-sm text-brand-chrom">
+            {order.status === "completed"
+              ? "✓ Zlecenie doszło do skutku."
+              : "✕ Zlecenie nie doszło do skutku."}
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-brand-chrom mb-3">
+              {order.status === "chosen"
+                ? "Klient wybrał studio. Gdy potwierdzisz realizację (np. telefonicznie ze studiem), oznacz wynik."
+                : "Klient jeszcze nie wybrał oferty."}
+            </p>
+            <OutcomeButtons orderId={order.id} />
+          </>
+        )}
+      </div>
+
+      {/* Rozmowy */}
+      <div className="mt-6 bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
+        <h2 className="font-semibold mb-4">Rozmowy klient ↔ studio</h2>
+        {quotes && quotes.length > 0 ? (
+          <div className="space-y-4">
+            {quotes.map((q: any) => {
+              const thread = (messages || []).filter(
+                (m: any) => m.studio_id === q.studio_id
+              ) as ThreadMessage[];
+              const fromClient = thread.filter((m) => m.sender_role === "client").length;
+              const fromStudio = thread.length - fromClient;
+              const last = thread[thread.length - 1];
+              const waitH = last
+                ? Math.floor((Date.now() - new Date(last.created_at).getTime()) / 3600000)
+                : 0;
+              const open = !["completed", "cancelled"].includes(order.status);
+              return (
+                <div
+                  key={q.id}
+                  className="p-4 bg-brand-grafit border border-brand-border rounded-xl"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium text-sm">{q.studio?.business_name}</p>
+                    <p className="text-xs text-brand-chrom">
+                      {thread.length === 0
+                        ? "Brak rozmowy"
+                        : `Klient: ${fromClient} · Studio: ${fromStudio}`}
+                    </p>
+                  </div>
+                  {last && open && (
+                    <p
+                      className={`text-xs mt-1 ${
+                        waitH >= 24 ? "text-amber-400" : "text-brand-chrom/70"
+                      }`}
+                    >
+                      Czeka na odpowiedź:{" "}
+                      {last.sender_role === "client" ? "studio" : "klient"}
+                      {waitH > 0 ? ` (od ${waitH} h)` : " (przed chwilą)"}
+                    </p>
+                  )}
+                  {thread.length > 0 && (
+                    <MessageThread
+                      orderId={order.id}
+                      studioId={q.studio_id}
+                      viewer="admin"
+                      messages={thread}
+                      canWrite={false}
+                      otherPartyName={q.studio?.business_name || "Studio"}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-brand-chrom">
+            Rozmowy pojawią się, gdy studia wyślą wyceny.
+          </p>
+        )}
+      </div>
+
+      {/* Historia powiadomień */}
+      <div className="mt-6 bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
+        <h2 className="font-semibold mb-1">Historia powiadomień</h2>
+        <p className="text-xs text-brand-chrom/60 mb-4">
+          „Wysłano” = mail przyjęty przez Resend. Doręczenie i otwarcie sprawdzisz
+          w logach Resend po ID wiadomości.
+        </p>
+
+        {emailLog && emailLog.length > 0 ? (
+          <ol className="space-y-3">
+            {emailLog.map((e: any) => {
+              const ls = logStatus[e.status] || logStatus.skipped;
+              return (
+                <li
+                  key={e.id}
+                  className="p-4 bg-brand-grafit border border-brand-border rounded-xl"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">
+                        {eventLabels[e.event] || e.event}
+                      </p>
+                      <p className="text-xs text-brand-chrom break-all">
+                        {roleLabels[e.recipient_role] || e.recipient_role || "Odbiorca"}
+                        {" · "}
+                        {e.recipient}
+                      </p>
+                      <p className="text-xs text-brand-chrom/60 mt-1 break-words">
+                        Temat: {e.subject}
+                      </p>
+                      {e.error && (
+                        <p className="text-xs text-red-400 mt-1 break-words">
+                          {e.error}
+                        </p>
+                      )}
+                      {e.provider_id && (
+                        <p className="text-[11px] text-brand-chrom/40 mt-1 break-all">
+                          Resend ID: {e.provider_id}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${ls.color}`}
+                      >
+                        {ls.label}
+                      </span>
+                      <p className="text-xs text-brand-chrom/60 mt-2 whitespace-nowrap">
+                        {new Date(e.created_at).toLocaleString("pl-PL", {
+                          timeZone: "Europe/Warsaw",
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p className="text-sm text-brand-chrom">
+            Brak zapisanych powiadomień. Maile wysłane przed wdrożeniem historii
+            nie są tu widoczne — sprawdź je w logach Resend.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

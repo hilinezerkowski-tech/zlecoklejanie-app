@@ -186,7 +186,10 @@ export async function POST(req: NextRequest) {
     ADMIN_EMAIL,
     adminSubject,
     adminHtml,
-    leadEmail ? { replyTo: leadEmail } : undefined
+    {
+      ...(leadEmail ? { replyTo: leadEmail } : {}),
+      log: { event: "lead_admin_alert", recipientRole: "admin", leadId: lead.id },
+    }
   );
 
   // ---- 2. Autoresponder do zglaszajacego --------------------------------
@@ -205,7 +208,10 @@ export async function POST(req: NextRequest) {
         ctaLabel: tpl.ctaLabel,
         footer: tpl.footer,
       }),
-      { replyTo: ADMIN_EMAIL }
+      {
+        replyTo: ADMIN_EMAIL,
+        log: { event: "lead_autoreply", recipientRole: "lead", leadId: lead.id },
+      }
     );
   }
 

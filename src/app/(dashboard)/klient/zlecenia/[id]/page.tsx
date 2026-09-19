@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChooseQuoteButton } from "./choose-quote-button";
 import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
+import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 
 // Etykiety spojne z pozostalymi panelami
 const serviceLabels: Record<string, string> = {
@@ -86,6 +87,15 @@ export default async function ClientOrderDetailPage({
       };
     }
   }
+
+  // Rozmowy ze studiami (RLS: klient widzi tylko rozmowy swoich zleceń)
+  const { data: messages } = await supabase
+    .from("order_messages")
+    .select("id, studio_id, sender_role, body, created_at")
+    .eq("order_id", params.id)
+    .order("created_at", { ascending: true });
+  const threadFor = (studioId: string): ThreadMessage[] =>
+    (messages ?? []).filter((m: any) => m.studio_id === studioId) as ThreadMessage[];
 
   const photos: string[] = Array.isArray(order.photos) ? order.photos : [];
   const status = statusLabels[order.status] || statusLabels.new;
@@ -277,6 +287,20 @@ export default async function ClientOrderDetailPage({
                     studioName={studio?.business_name || "to studio"}
                   />
                 )}
+
+                {/* Rozmowa z tym studiem — zasady otwarcia jak w migracji 012 */}
+                <MessageThread
+                  orderId={order.id}
+                  studioId={q.studio_id}
+                  viewer="client"
+                  messages={threadFor(q.studio_id)}
+                  otherPartyName={studio?.business_name || "Studio"}
+                  canWrite={
+                    !["completed", "cancelled"].includes(order.status) &&
+                    (order.status !== "chosen" || isChosen)
+                  }
+                  closedNote="Rozmowa zamknięta."
+                />
               </div>
             );
           })}

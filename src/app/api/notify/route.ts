@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { APP_URL, sendEmail } from "@/lib/email";
 
 /**
  * Powiadomienia e-mail (Resend) po kluczowych akcjach marketplace'u.
@@ -14,32 +15,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  *   i akcje dzialaly takze bez skonfigurowanego klucza.
  */
 
-const FROM = "ZlecOklejanie.pl <powiadomienia@zlecoklejanie.pl>";
-// Docelowy adres aplikacji — z env (ten sam, ktorego uzywa magic link),
-// z fallbackiem na domene Vercela.
-const APP_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-  "https://zlecoklejanie-app.vercel.app";
-
-async function sendEmail(to: string, subject: string, html: string) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    console.warn("[notify] RESEND_API_KEY not set — skipping email:", subject);
-    return;
-  }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ from: FROM, to: [to], subject, html }),
-  });
-  if (!res.ok) {
-    console.error("[notify] Resend error:", res.status, await res.text());
-  }
-}
-
+// Wysylka + zapis do historii powiadomien (email_log) — wspolna warstwa.
+// Adres aplikacji — z env (ten sam, ktorego uzywa magic link).
 function layout(title: string, body: string, ctaUrl: string, ctaLabel: string) {
   return `<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a1a;">
     <p style="font-size:20px;font-weight:800;margin:0 0 16px;">zlec<span style="color:#a3c644;">oklejanie</span>.pl</p>
@@ -155,7 +132,8 @@ export async function POST(req: NextRequest) {
                <p>Zaloguj sie i wyslij wycene — maksymalnie 3 studia dostaja to zapytanie, wiec masz realna szanse.</p>`,
               `${APP_URL}/studio/zlecenia/${order.id}`,
               "Zobacz zlecenie i wycen"
-            )
+            ),
+            { log: { event: "assigned", recipientRole: "studio", orderId: order.id } }
           );
         }
       }
@@ -178,7 +156,8 @@ export async function POST(req: NextRequest) {
              <p>Porownaj oferty i wybierz studio, ktore najbardziej Ci odpowiada.</p>`,
             `${APP_URL}/klient/zlecenia/${order.id}`,
             "Zobacz oferty"
-          )
+          ),
+          { log: { event: "quoted", recipientRole: "client", orderId: order.id } }
         );
       }
     }
@@ -219,7 +198,8 @@ export async function POST(req: NextRequest) {
                <p>Skontaktuj sie, ustal termin i szczegoly realizacji.</p>`,
               `${APP_URL}/studio/zlecenia/${order.id}`,
               "Zobacz szczegoly"
-            )
+            ),
+            { log: { event: "chosen_studio", recipientRole: "studio", orderId: order.id } }
           );
         }
         if (client?.email && studioProfile) {
@@ -233,7 +213,8 @@ export async function POST(req: NextRequest) {
                <p>Studio rowniez dostalo Twoj kontakt i moze odezwac sie pierwsze.</p>`,
               `${APP_URL}/klient/zlecenia/${order.id}`,
               "Zobacz zlecenie"
-            )
+            ),
+            { log: { event: "chosen_client", recipientRole: "client", orderId: order.id } }
           );
         }
       }
