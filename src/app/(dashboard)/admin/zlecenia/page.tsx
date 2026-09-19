@@ -46,6 +46,24 @@ export default async function ZleceniaPage({
 
   const { data: orders, error } = await query;
 
+  // Podsumowanie rozmów per zlecenie: liczba wiadomości + kto czeka na odpowiedź
+  const orderIds = (orders || []).map((o: any) => o.id);
+  const chat: Record<string, { count: number; lastRole: string; lastAt: string }> = {};
+  if (orderIds.length > 0) {
+    const { data: msgs } = await supabase
+      .from("order_messages")
+      .select("order_id, sender_role, created_at")
+      .in("order_id", orderIds)
+      .order("created_at", { ascending: true });
+    for (const m of msgs || []) {
+      const c = chat[m.order_id] || { count: 0, lastRole: "", lastAt: "" };
+      c.count += 1;
+      c.lastRole = m.sender_role;
+      c.lastAt = m.created_at;
+      chat[m.order_id] = c;
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -101,6 +119,7 @@ export default async function ZleceniaPage({
                 <th className="px-6 py-4 font-medium">Miasto</th>
                 <th className="px-6 py-4 font-medium">Klient</th>
                 <th className="px-6 py-4 font-medium">Status</th>
+                <th className="px-6 py-4 font-medium">Rozmowa</th>
                 <th className="px-6 py-4 font-medium">Data</th>
                 <th className="px-6 py-4 font-medium"></th>
               </tr>
@@ -132,6 +151,21 @@ export default async function ZleceniaPage({
                       >
                         {st.label}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-brand-chrom whitespace-nowrap">
+                      {chat[order.id] ? (
+                        <>
+                          💬 {chat[order.id].count}
+                          {!["completed", "cancelled"].includes(order.status) && (
+                            <span className="block text-brand-chrom/60">
+                              czeka:{" "}
+                              {chat[order.id].lastRole === "client" ? "studio" : "klient"}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-6 py-4 text-sm text-brand-chrom">
                       {new Date(order.created_at).toLocaleDateString("pl-PL")}

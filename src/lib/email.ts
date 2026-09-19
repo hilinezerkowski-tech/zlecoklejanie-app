@@ -9,6 +9,8 @@
  * kontekstu serwera — nigdy bezpośrednio z ciała żądania HTTP.
  */
 
+import { createAdminClient } from "@/lib/supabase/admin";
+
 export const EMAIL_FROM =
   "ZlecOklejanie.pl <powiadomienia@zlecoklejanie.pl>";
 
@@ -72,20 +74,65 @@ export function emailLayout({
   </div>`;
 }
 
+/** Metadane do historii powiadomień (tabela email_log). */
+export type EmailLogMeta = {
+  event: string;
+  recipientRole?: "client" | "studio" | "designer" | "admin" | "lead";
+  orderId?: string | null;
+  leadId?: string | null;
+};
+
+/**
+ * Zapis próby wysyłki do email_log. Best-effort: błąd zapisu logu
+ * NIGDY nie przerywa wysyłki ani akcji użytkownika.
+ */
+async function writeEmailLog(
+  meta: EmailLogMeta,
+  to: string,
+  subject: string,
+  status: "sent" | "failed" | "skipped",
+  providerId?: string | null,
+  error?: string | null
+) {
+  try {
+    const admin = createAdminClient();
+    const { error: dbErr } = await admin.from("email_log").insert({
+      event: meta.event,
+      recipient: to,
+      recipient_role: meta.recipientRole ?? null,
+      order_id: meta.orderId ?? null,
+      lead_id: meta.leadId ?? null,
+      subject,
+      status,
+      provider_id: providerId ?? null,
+      // Przycinamy — treść błędu Resend bywa długa, a to tylko podgląd
+      error: error ? error.slice(0, 500) : null,
+    });
+    if (dbErr) console.warn("[email] log insert failed:", dbErr.message);
+  } catch (e) {
+    console.warn("[email] log write threw:", e);
+  }
+}
+
 /**
  * Wysyłka przez Resend. Brak RESEND_API_KEY => cichy skip (feature flag),
  * żeby build i akcje działały także bez skonfigurowanego klucza.
  * Zwraca true tylko przy potwierdzonym przyjęciu przez Resend.
+ *
+ * Gdy podano `opts.log`, wynik (sent/failed/skipped) trafia do historii
+ * powiadomień widocznej w panelu admina.
  */
 export async function sendEmail(
   to: string,
   subject: string,
   html: string,
-  opts?: { replyTo?: string }
+  opts?: { replyTo?: string; log?: EmailLogMeta }
 ): Promise<boolean> {
+  const log = opts?.log;
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     console.warn("[email] RESEND_API_KEY not set — skipping:", subject);
+    if (log) await writeEmailLog(log, to, subject, "skipped", null, "Brak RESEND_API_KEY");
     return false;
   }
 
@@ -106,12 +153,24 @@ export async function sendEmail(
     });
 
     if (!res.ok) {
-      console.error("[email] Resend error:", res.status, await res.text());
+      const errText = await res.text();
+      console.error("[email] Resend error:", res.status, errText);
+      if (log) await writeEmailLog(log, to, subject, "failed", null, `HTTP ${res.status}: ${errText}`);
       return false;
     }
+
+    // Resend zwraca { id } — zapisujemy, żeby dało się znaleźć mail w ich logach
+    let providerId: string | null = null;
+    try {
+      providerId = ((await res.json()) as { id?: string })?.id ?? null;
+    } catch {
+      /* brak JSON — nie szkodzi */
+    }
+    if (log) await writeEmailLog(log, to, subject, "sent", providerId);
     return true;
   } catch (e) {
     console.error("[email] send failed:", e);
+    if (log) await writeEmailLog(log, to, subject, "failed", null, String(e));
     return false;
   }
 }

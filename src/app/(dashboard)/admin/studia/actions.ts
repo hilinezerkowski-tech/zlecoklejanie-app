@@ -68,7 +68,8 @@ async function sendStudioWelcome(
       footer:
         "Link logowania jest jednorazowy i wygasa po godzinie. Jeśli przestanie działać — wejdź na " +
         `${APP_URL}/login, podaj ten adres e-mail, a wyślemy nowy. Masz pytania? Odpisz na tę wiadomość.`,
-    })
+    }),
+    { log: { event: "studio_welcome", recipientRole: "studio" } }
   );
 }
 
