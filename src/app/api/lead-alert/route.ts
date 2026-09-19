@@ -8,6 +8,7 @@ import {
   isValidEmail,
   sendEmail,
 } from "@/lib/email";
+import { autoOnboardLead, type AutoOnboardResult } from "@/lib/onboarding";
 
 /**
  * Obsluga nowego leada z landing page — dwa maile:
@@ -54,6 +55,13 @@ const fieldLabels: Record<string, string> = {
   specjalizacja: "Specjalizacja",
   email: "E-mail",
   telefon: "Telefon",
+  zrodlo: "Zrodlo (strona)",
+  usl_wrap: "Robi: wrap",
+  usl_ppf: "Robi: PPF",
+  usl_reklama: "Robi: reklama / floty",
+  usl_szyby: "Robi: szyby",
+  usl_mobilnie: "Dojezdza do klienta",
+  zgoda_post_powitalny: "Zgoda na post powitalny",
 };
 
 /**
@@ -153,6 +161,24 @@ export async function POST(req: NextRequest) {
   const p = (lead.payload || {}) as Record<string, string>;
   const leadEmail = isValidEmail(p.email) ? p.email.trim() : null;
 
+  // ---- 0. Auto-onboarding wykonawcy (studio / grafik) -------------------
+  // Konto `pending` + welcome mail od razu; aktywacja zostaje reczna
+  // (/admin/studia?status=pending). Blad tutaj NIE moze zablokowac alertu.
+  let auto: AutoOnboardResult = { done: false };
+  try {
+    auto = await autoOnboardLead(admin, lead);
+  } catch (e) {
+    console.error("[lead-alert] auto-onboard threw:", e);
+    auto = { done: false, reason: String(e) };
+  }
+  if (auto.done) {
+    // Lead zalatwiony — konto czeka w panelu jako "Oczekuje".
+    await admin
+      .from("landing_leads")
+      .update({ status: "handled", handled_at: new Date().toISOString() })
+      .eq("id", lead.id);
+  }
+
   // ---- 1. Alert do admina ----------------------------------------------
   const rows = Object.entries(p)
     .filter(([, v]) => v && String(v).trim())
@@ -170,14 +196,22 @@ export async function POST(req: NextRequest) {
   const adminSubject =
     `Nowy lead (${lead.kind}): ${p.nazwa || p.auto || p.miasto || p.email || ""}`.trim();
 
+  const autoNote = auto.done
+    ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#f3f9e3;border-radius:8px;">Konto zalozone automatycznie (status: oczekuje), mail powitalny ${auto.welcomeSent ? "wyslany" : "NIE wyslany — skontaktuj sie recznie"}. Wykonawca nie dostanie zlecen, dopoki nie klikniesz Aktywuj.</p>`
+    : auto.reason
+    ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#fff4e0;border-radius:8px;">Auto-onboarding pominiety: ${escapeHtml(auto.reason)}. Uzyj przycisku w skrzynce leadow.</p>`
+    : "";
+
   const adminHtml = emailLayout({
     title: "Nowe zgloszenie z formularza",
     body: `<p style="font-size:14px;color:#666;margin:0 0 16px;">Typ: ${escapeHtml(
       kindLabel
     )}</p>
-      <table style="font-size:14px;line-height:1.5;border-collapse:collapse;">${rows}</table>`,
-    ctaUrl: `${APP_URL}/admin/leady?status=new`,
-    ctaLabel: "Otworz skrzynke leadow",
+      ${autoNote}<table style="font-size:14px;line-height:1.5;border-collapse:collapse;">${rows}</table>`,
+    ctaUrl: auto.done
+      ? `${APP_URL}/admin/${auto.kind === "grafik" ? "graficy" : "studia"}?status=pending`
+      : `${APP_URL}/admin/leady?status=new`,
+    ctaLabel: auto.done ? "Sprawdz portfolio i aktywuj" : "Otworz skrzynke leadow",
     footer:
       "Lead klienta zamienisz na zlecenie jednym kliknieciem w panelu. Zglaszajacy dostal juz automatyczne potwierdzenie.",
   });
@@ -196,7 +230,7 @@ export async function POST(req: NextRequest) {
   // ---- 2. Autoresponder do zglaszajacego --------------------------------
   // Adres pochodzi z bazy (rekord wstawiony przez formularz), nie z requestu.
   let replySent = false;
-  if (leadEmail) {
+  if (leadEmail && !auto.done) {
     const name = escapeHtml((p.nazwa || "").trim().split(/\s+/)[0] || "");
     const tpl = autoReply(lead.kind, name);
     replySent = await sendEmail(
@@ -216,5 +250,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, adminSent, replySent });
+  return NextResponse.json({ ok: true, adminSent, replySent, autoOnboarded: auto.done });
 }
