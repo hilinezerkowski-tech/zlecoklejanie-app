@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AssignStudioForm } from "./assign-form";
 import { OutcomeButtons } from "./outcome-buttons";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
+import { sortujWgOdleglosci } from "@/lib/geo";
 
 export default async function OrderDetailPage({
   params,
@@ -80,6 +81,7 @@ export default async function OrderDetailPage({
   // Pobierz dostępne studia do przypisania
   const { data: availableStudios } = await supabase
     .from("studios")
+    // UWAGA: tabela studios nie ma kolumny `city` — miasto parsuje geo.ts z `address`.
     .select("id, business_name, address, specializations")
     .eq("status", "active");
 
@@ -87,8 +89,11 @@ export default async function OrderDetailPage({
     (a: any) => a.studio?.id
   );
 
-  const unassignedStudios = (availableStudios || []).filter(
-    (s: any) => !assignedStudioIds.includes(s.id)
+  const unassignedStudios = sortujWgOdleglosci(
+    (availableStudios || []).filter(
+      (s: any) => !assignedStudioIds.includes(s.id)
+    ),
+    order.city
   );
 
   const serviceLabels: Record<string, string> = {
@@ -306,6 +311,7 @@ export default async function OrderDetailPage({
           <AssignStudioForm
             orderId={order.id}
             studios={unassignedStudios}
+            orderCity={order.city}
           />
         )}
 
