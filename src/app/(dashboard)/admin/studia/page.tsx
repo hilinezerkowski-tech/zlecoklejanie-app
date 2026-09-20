@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AddStudioForm } from "./add-studio-form";
 import { StudioActions } from "./studio-actions";
+import { RestoreStudioButton, StudioManage } from "./studio-manage";
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   pending: { label: "Oczekuje", color: "bg-amber-400/15 text-amber-400" },
@@ -16,6 +17,8 @@ export default async function StudiaPage({
 }) {
   const params = await searchParams;
   const supabase = await createClient();
+  // „Usunięte" = miękko usunięte (deleted_at ustawione) — osobna zakładka z „Przywróć"
+  const showDeleted = params.status === "deleted";
 
   let query = supabase
     .from("studios")
@@ -34,12 +37,18 @@ export default async function StudiaPage({
       verified_at,
       rejection_reason,
       created_at,
+      deleted_at,
       profile:profiles!studios_id_fkey(email, full_name, phone)
     `)
     .order("created_at", { ascending: false });
 
-  if (params.status) {
-    query = query.eq("status", params.status);
+  if (showDeleted) {
+    query = query.not("deleted_at", "is", null);
+  } else {
+    query = query.is("deleted_at", null);
+    if (params.status) {
+      query = query.eq("status", params.status);
+    }
   }
 
   const { data: studios } = await query;
@@ -78,6 +87,16 @@ export default async function StudiaPage({
             {label}
           </a>
         ))}
+        <a
+          href="/admin/studia?status=deleted"
+          className={`px-3 py-1.5 rounded-lg text-sm transition ${
+            showDeleted
+              ? "bg-red-400/15 text-red-400"
+              : "text-brand-chrom hover:text-brand-kosc hover:bg-white/5"
+          }`}
+        >
+          Usunięte
+        </a>
       </div>
 
       {/* Dodaj studio */}
@@ -86,10 +105,14 @@ export default async function StudiaPage({
       {/* Lista studiów */}
       {!studios || studios.length === 0 ? (
         <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-12 text-center">
-          <p className="text-brand-chrom mb-2">Brak studiów</p>
-          <p className="text-sm text-brand-chrom/60">
-            Użyj formularza powyżej, żeby dodać pierwsze studio.
+          <p className="text-brand-chrom mb-2">
+            {showDeleted ? "Brak usuniętych studiów" : "Brak studiów"}
           </p>
+          {!showDeleted && (
+            <p className="text-sm text-brand-chrom/60">
+              Użyj formularza powyżej, żeby dodać pierwsze studio.
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -117,6 +140,11 @@ export default async function StudiaPage({
                       {studio.verified_at && (
                         <span className="text-xs px-2 py-1 rounded-full font-medium bg-teal-400/15 text-teal-400">
                           ✓ Zweryfikowane
+                        </span>
+                      )}
+                      {studio.deleted_at && (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-400/15 text-red-400">
+                          Usunięte {new Date(studio.deleted_at).toLocaleDateString("pl-PL")}
                         </span>
                       )}
                     </div>
@@ -172,11 +200,28 @@ export default async function StudiaPage({
                       </p>
                     )}
                   </div>
-                  <StudioActions
-                    studioId={studio.id}
-                    currentStatus={studio.status}
-                    verifiedAt={studio.verified_at}
-                  />
+                  {studio.deleted_at ? (
+                    <RestoreStudioButton studioId={studio.id} />
+                  ) : (
+                    <StudioActions
+                      studioId={studio.id}
+                      currentStatus={studio.status}
+                      verifiedAt={studio.verified_at}
+                    >
+                      <StudioManage
+                        studio={{
+                          id: studio.id,
+                          business_name: studio.business_name,
+                          address: studio.address,
+                          instagram: studio.instagram,
+                          specializations: studio.specializations,
+                          status: studio.status,
+                          email: studio.profile?.email ?? null,
+                          phone: studio.profile?.phone ?? null,
+                        }}
+                      />
+                    </StudioActions>
+                  )}
                 </div>
               </div>
             );

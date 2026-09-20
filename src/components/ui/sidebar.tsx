@@ -10,6 +10,8 @@ interface SidebarProps {
   name: string;
   email: string;
   avatarUrl?: string | null;
+  /** Liczniki przy pozycjach menu: href -> liczba (0 = bez plakietki). */
+  badges?: Record<string, number>;
 }
 
 const menuItems: Record<string, { label: string; href: string; icon: string }[]> = {
@@ -24,6 +26,7 @@ const menuItems: Record<string, { label: string; href: string; icon: string }[]>
   studio: [
     { label: "Dashboard", href: "/studio", icon: "📊" },
     { label: "Zlecenia", href: "/studio/zlecenia", icon: "📋" },
+    { label: "Wiadomości", href: "/studio/wiadomosci", icon: "✉️" },
     { label: "Mój profil", href: "/studio/profil", icon: "🏢" },
     { label: "Historia", href: "/studio/historia", icon: "📁" },
   ],
@@ -36,7 +39,7 @@ const menuItems: Record<string, { label: string; href: string; icon: string }[]>
   ],
 };
 
-export function Sidebar({ role, name, email }: SidebarProps) {
+export function Sidebar({ role, name, email, badges }: SidebarProps) {
   const pathname = usePathname();
   const items = menuItems[role] || [];
   const supabase = createClient();
@@ -151,6 +154,11 @@ export function Sidebar({ role, name, email }: SidebarProps) {
               >
                 <span>{item.icon}</span>
                 {item.label}
+                {(badges?.[item.href] ?? 0) > 0 && (
+                  <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-brand-lime text-brand-grafit font-bold">
+                    {badges![item.href]}
+                  </span>
+                )}
               </Link>
             );
           })}

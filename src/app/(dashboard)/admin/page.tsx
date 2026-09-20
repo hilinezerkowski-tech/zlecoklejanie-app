@@ -9,8 +9,8 @@ export default async function AdminDashboard() {
 
   // Statystyki z RLS (widoczne dla admina)
   const { count: ordersCount } = await supabase.from("orders").select("*", { count: "exact", head: true });
-  const { count: studiosActive } = await supabase.from("studios").select("*", { count: "exact", head: true }).eq("status", "active");
-  const { count: studiosPending } = await supabase.from("studios").select("*", { count: "exact", head: true }).eq("status", "pending");
+  const { count: studiosActive } = await supabase.from("studios").select("*", { count: "exact", head: true }).eq("status", "active").is("deleted_at", null);
+  const { count: studiosPending } = await supabase.from("studios").select("*", { count: "exact", head: true }).eq("status", "pending").is("deleted_at", null);
   const { count: ordersNew } = await supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "new");
 
   // Leady z landing page: tabela celowo bez polityki SELECT, więc liczymy
