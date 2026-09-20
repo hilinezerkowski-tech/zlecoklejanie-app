@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { SearchList } from "@/components/ui/search-list";
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   new: { label: "Nowe", color: "bg-amber-400/15 text-amber-400" },
@@ -110,8 +111,10 @@ export default async function ZleceniaPage({
           </p>
         </div>
       ) : (
-        <div className="bg-brand-grafit-light border border-brand-border rounded-2xl overflow-hidden">
-          <table className="w-full">
+        <SearchList
+          placeholder="Szukaj zlecenia — auto, miasto, klient, usługa..."
+          emptyText="Żadne zlecenie nie pasuje do wyszukiwania."
+          head={
             <thead>
               <tr className="border-b border-brand-border text-left text-sm text-brand-chrom">
                 <th className="px-6 py-4 font-medium">Usługa</th>
@@ -124,13 +127,13 @@ export default async function ZleceniaPage({
                 <th className="px-6 py-4 font-medium"></th>
               </tr>
             </thead>
-            <tbody>
-              {orders.map((order: any) => {
+          }
+          rows={orders.map((order: any) => {
                 const st = statusLabels[order.status] || {
                   label: order.status,
                   color: "bg-gray-400/15 text-gray-400",
                 };
-                return (
+                const node = (
                   <tr
                     key={order.id}
                     className="border-b border-brand-border/50 hover:bg-white/[0.02] transition"
@@ -180,10 +183,23 @@ export default async function ZleceniaPage({
                     </td>
                   </tr>
                 );
+                return {
+                  key: order.id,
+                  text: [
+                    serviceLabels[order.service_type] || order.service_type,
+                    order.car_brand,
+                    order.car_model,
+                    order.city,
+                    order.client?.full_name,
+                    order.client?.email,
+                    st.label,
+                  ]
+                    .filter(Boolean)
+                    .join(" "),
+                  node,
+                };
               })}
-            </tbody>
-          </table>
-        </div>
+        />
       )}
     </div>
   );

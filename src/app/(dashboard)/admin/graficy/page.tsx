@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AddDesignerForm } from "./add-designer-form";
 import { DesignerActions } from "./designer-actions";
+import { SearchList } from "@/components/ui/search-list";
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   pending: { label: "Oczekuje", color: "bg-amber-400/15 text-amber-400" },
@@ -131,8 +132,11 @@ export default async function GraficyPage({
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {list.map((d) => {
+        <SearchList
+          listClassName="space-y-3"
+          placeholder="Szukaj grafika — imię, miasto, e-mail, specjalizacja, program..."
+          emptyText="Żaden grafik nie pasuje do wyszukiwania."
+          rows={list.map((d) => {
             const profile = Array.isArray(d.profile) ? d.profile[0] : d.profile;
             const st = statusLabels[d.status] || {
               label: d.status,
@@ -140,7 +144,7 @@ export default async function GraficyPage({
             };
             const widelki = priceRange(d.price_from, d.price_to);
 
-            return (
+            const node = (
               <div
                 key={d.id}
                 className="bg-brand-grafit-light border border-brand-border rounded-2xl p-5 flex items-start justify-between"
@@ -240,8 +244,25 @@ export default async function GraficyPage({
                 />
               </div>
             );
+            return {
+              key: d.id,
+              text: [
+                d.display_name,
+                d.city,
+                profile?.email,
+                profile?.phone,
+                profile?.full_name,
+                d.instagram,
+                st.label,
+                ...(d.specializations || []),
+                ...(d.software || []),
+              ]
+                .filter(Boolean)
+                .join(" "),
+              node,
+            };
           })}
-        </div>
+        />
       )}
     </div>
   );

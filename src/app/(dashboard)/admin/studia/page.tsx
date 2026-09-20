@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AddStudioForm } from "./add-studio-form";
 import { StudioActions } from "./studio-actions";
 import { RestoreStudioButton, StudioManage } from "./studio-manage";
+import { SearchList } from "@/components/ui/search-list";
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   pending: { label: "Oczekuje", color: "bg-amber-400/15 text-amber-400" },
@@ -115,13 +116,15 @@ export default async function StudiaPage({
           )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {studios.map((studio: any) => {
+        <SearchList
+          placeholder="Szukaj studia — nazwa, miasto, e-mail, telefon, NIP..."
+          emptyText="Żadne studio nie pasuje do wyszukiwania."
+          rows={studios.map((studio: any) => {
             const st = statusLabels[studio.status] || {
               label: studio.status,
               color: "bg-gray-400/15 text-gray-400",
             };
-            return (
+            const node = (
               <div
                 key={studio.id}
                 className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6"
@@ -225,8 +228,25 @@ export default async function StudiaPage({
                 </div>
               </div>
             );
+            return {
+              key: studio.id,
+              text: [
+                studio.business_name,
+                studio.address,
+                studio.profile?.email,
+                studio.profile?.phone,
+                studio.nip,
+                studio.instagram,
+                st.label,
+                ...(studio.specializations || []),
+                ...(studio.foil_brands || []),
+              ]
+                .filter(Boolean)
+                .join(" "),
+              node,
+            };
           })}
-        </div>
+        />
       )}
     </div>
   );
