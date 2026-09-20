@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { AssignStudioForm } from "./assign-form";
 import { OutcomeButtons } from "./outcome-buttons";
+import { AssignmentActions } from "./assignment-actions";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 import { sortujWgOdleglosci } from "@/lib/geo";
 
@@ -123,6 +124,7 @@ export default async function OrderDetailPage({
 
   const eventLabels: Record<string, string> = {
     assigned: "Nowe zlecenie do wyceny",
+    assigned_resend: "Nowe zlecenie do wyceny (wysłane ponownie)",
     quoted: "Nowa oferta od studia",
     chosen_studio: "Klient wybrał ofertę",
     chosen_client: "Potwierdzenie wyboru studia",
@@ -277,27 +279,35 @@ export default async function OrderDetailPage({
                     {a.studio?.instagram && ` · @${a.studio.instagram}`}
                   </p>
                 </div>
-                <span
-                  className={`text-xs px-2 py-1 rounded-full font-medium ${
-                    a.status === "quoted"
-                      ? "bg-purple-400/15 text-purple-400"
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      a.status === "quoted"
+                        ? "bg-purple-400/15 text-purple-400"
+                        : a.status === "chosen"
+                        ? "bg-brand-lime/15 text-brand-lime"
+                        : a.status === "rejected"
+                        ? "bg-red-400/15 text-red-400"
+                        : "bg-amber-400/15 text-amber-400"
+                    }`}
+                  >
+                    {a.status === "pending"
+                      ? "Oczekuje"
+                      : a.status === "quoted"
+                      ? "Wyceniono"
                       : a.status === "chosen"
-                      ? "bg-brand-lime/15 text-brand-lime"
+                      ? "Wybrany"
                       : a.status === "rejected"
-                      ? "bg-red-400/15 text-red-400"
-                      : "bg-amber-400/15 text-amber-400"
-                  }`}
-                >
-                  {a.status === "pending"
-                    ? "Oczekuje"
-                    : a.status === "quoted"
-                    ? "Wyceniono"
-                    : a.status === "chosen"
-                    ? "Wybrany"
-                    : a.status === "rejected"
-                    ? "Odrzucony"
-                    : a.status}
-                </span>
+                      ? "Odrzucony"
+                      : a.status}
+                  </span>
+                  <AssignmentActions
+                    orderId={order.id}
+                    studioId={a.studio?.id}
+                    studioName={a.studio?.business_name || "Studio"}
+                    status={a.status}
+                  />
+                </div>
               </div>
             ))}
           </div>

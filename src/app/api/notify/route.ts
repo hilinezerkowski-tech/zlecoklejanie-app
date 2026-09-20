@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { APP_URL, sendEmail } from "@/lib/email";
+import { sendAssignedEmail } from "@/lib/notify-assigned";
 
 /**
  * Powiadomienia e-mail (Resend) po kluczowych akcjach marketplace'u.
@@ -39,13 +40,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  let payload: { type?: string; orderId?: string };
+  let payload: { type?: string; orderId?: string; studioId?: string };
   try {
     payload = await req.json();
   } catch {
     return NextResponse.json({ error: "bad json" }, { status: 400 });
   }
-  const { type, orderId } = payload;
+  const { type, orderId, studioId } = payload;
   if (!type || !orderId || !["assigned", "quoted", "chosen"].includes(type)) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
@@ -101,41 +102,22 @@ export async function POST(req: NextRequest) {
 
   try {
     if (type === "assigned") {
-      // Mail do NAJNOWIEJ przypisanego studia (wolane tuz po insercie przypisania)
-      const { data: assignment } = await admin
-        .from("order_assignments")
-        .select("studio_id")
-        .eq("order_id", orderId)
-        .order("assigned_at", { ascending: false })
-        .limit(1)
-        .single();
-      if (assignment) {
-        // Kontakt studia jest w profiles (studios.id === profiles.id), nie w studios
-        const { data: studio } = await admin
-          .from("studios")
-          .select("business_name")
-          .eq("id", assignment.studio_id)
+      // Mail do studia: wskazanego przez studioId (ponowna wysylka z panelu)
+      // albo NAJNOWIEJ przypisanego (wolane tuz po insercie przypisania).
+      // Tresc i log w email_log: wspolny helper sendAssignedEmail.
+      let targetStudioId: string | null = studioId ?? null;
+      if (!targetStudioId) {
+        const { data: assignment } = await admin
+          .from("order_assignments")
+          .select("studio_id")
+          .eq("order_id", orderId)
+          .order("assigned_at", { ascending: false })
+          .limit(1)
           .single();
-        const { data: studioProfile } = await admin
-          .from("profiles")
-          .select("email")
-          .eq("id", assignment.studio_id)
-          .single();
-        if (studioProfile?.email) {
-          await sendEmail(
-            studioProfile.email,
-            `Nowe zlecenie do wyceny: ${orderLabel}`,
-            layout(
-              "Masz nowe zlecenie do wyceny",
-              `<p>Czesc ${studio?.business_name ?? ""},</p>
-               <p>Klient szuka wykonawcy: <strong>${orderLabel}</strong>.</p>
-               <p>Zaloguj sie i wyslij wycene — maksymalnie 3 studia dostaja to zapytanie, wiec masz realna szanse.</p>`,
-              `${APP_URL}/studio/zlecenia/${order.id}`,
-              "Zobacz zlecenie i wycen"
-            ),
-            { log: { event: "assigned", recipientRole: "studio", orderId: order.id } }
-          );
-        }
+        targetStudioId = assignment?.studio_id ?? null;
+      }
+      if (targetStudioId) {
+        await sendAssignedEmail(admin, order.id, targetStudioId);
       }
     }
 
