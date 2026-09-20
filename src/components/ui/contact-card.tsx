@@ -7,7 +7,8 @@
  */
 
 export type OrderContact = {
-  party: "studio" | "client";
+  /** 'studio' i 'designer' — wykonawcy; 'client' — zamawiajacy. */
+  party: "studio" | "designer" | "client";
   display_name: string | null;
   email: string | null;
   phone: string | null;
@@ -16,10 +17,18 @@ export type OrderContact = {
 
 export function ContactCard({ contact }: { contact: OrderContact }) {
   const isStudio = contact.party === "studio";
+  const isDesigner = contact.party === "designer";
+  const wykonawca = isStudio || isDesigner;
 
-  const title = isStudio ? "Kontakt do studia" : "Kontakt do klienta";
-  const hint = isStudio
-    ? "Zadzwon lub napisz, aby ustalic termin i szczegoly realizacji. Studio dostalo rowniez Twoj kontakt."
+  const title = isStudio
+    ? "Kontakt do studia"
+    : isDesigner
+      ? "Kontakt do grafika"
+      : "Kontakt do klienta";
+  const hint = wykonawca
+    ? isStudio
+      ? "Zadzwon lub napisz, aby ustalic termin i szczegoly realizacji. Studio dostalo rowniez Twoj kontakt."
+      : "Zadzwon lub napisz, aby ustalic szczegoly projektu. Grafik dostal rowniez Twoj kontakt."
     : "Klient wybral Twoja oferte. Odezwij sie pierwszy — szybka reakcja zwykle decyduje o tym, czy zlecenie dojdzie do skutku.";
 
   return (
@@ -30,7 +39,8 @@ export function ContactCard({ contact }: { contact: OrderContact }) {
       </div>
 
       <p className="text-lg font-semibold mb-1">
-        {contact.display_name || (isStudio ? "Wybrane studio" : "Klient")}
+        {contact.display_name ||
+          (isStudio ? "Wybrane studio" : isDesigner ? "Wybrany grafik" : "Klient")}
       </p>
       {contact.location && (
         <p className="text-sm text-brand-chrom mb-4">{contact.location}</p>

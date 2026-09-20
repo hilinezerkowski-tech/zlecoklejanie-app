@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChooseQuoteButton } from "./choose-quote-button";
+import { ChooseDesignerButton } from "./choose-designer-button";
 import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 
@@ -41,7 +42,7 @@ export default async function ClientOrderDetailPage({
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, service_type, car_brand, car_model, car_year, scope, city, description, photos, status, chosen_quote_id, created_at"
+      "id, service_type, car_brand, car_model, car_year, scope, city, description, photos, status, chosen_quote_id, needs_designer, created_at"
     )
     .eq("id", params.id)
     .single();
@@ -108,6 +109,51 @@ export default async function ClientOrderDetailPage({
   const list = (quotes ?? []).filter(
     (q) => !deletedStudioIds.has(q.studio_id) || q.id === order.chosen_quote_id
   );
+
+  // ----- Tor grafika (migracja 015). Niezalezny od wyboru studia. -----
+  const { data: designerQuotes } = await supabase
+    .from("designer_quotes")
+    .select("id, designer_id, price_min, price_max, estimated_days, comment, status, created_at")
+    .eq("order_id", params.id)
+    .order("created_at", { ascending: true });
+
+  const designerIds = Array.from(
+    new Set((designerQuotes ?? []).map((q) => q.designer_id))
+  );
+  const designerMap: Record<string, { display_name: string; city: string | null }> = {};
+  if (designerIds.length > 0) {
+    // RLS: klient widzi aktywnych grafikow (migracja 015). Kontakt siedzi
+    // w `profiles` i wydaje go dopiero RPC po wyborze.
+    const { data: ds } = await supabase
+      .from("designers")
+      .select("id, display_name, city")
+      .in("id", designerIds);
+    for (const d of ds ?? []) {
+      designerMap[d.id] = { display_name: d.display_name, city: d.city };
+    }
+  }
+
+  const { data: designerMessages } = await supabase
+    .from("order_designer_messages")
+    .select("id, designer_id, sender_role, body, created_at")
+    .eq("order_id", params.id)
+    .order("created_at", { ascending: true });
+  const designerThreadFor = (designerId: string): ThreadMessage[] =>
+    (designerMessages ?? []).filter(
+      (m: any) => m.designer_id === designerId
+    ) as ThreadMessage[];
+
+  const wybranyGrafik = (designerQuotes ?? []).find((q) => q.status === "chosen");
+
+  let designerContact: OrderContact | null = null;
+  if (wybranyGrafik) {
+    const { data: rows } = await supabase.rpc("get_order_designer_contact", {
+      p_order_id: params.id,
+    });
+    if (Array.isArray(rows) && rows.length > 0) {
+      designerContact = rows[0] as OrderContact;
+    }
+  }
 
   // Kontakt do wybranego studia — RPC SECURITY DEFINER wydaje dane tylko
   // stronom rozstrzygnietego zlecenia (patrz migracja 010)
@@ -311,6 +357,105 @@ export default async function ClientOrderDetailPage({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Graficy — tor niezalezny od wyboru studia (migracja 015) */}
+      {(order.needs_designer || (designerQuotes && designerQuotes.length > 0)) && (
+        <div className="mt-10">
+          <div className="flex items-center gap-3 mb-1">
+            <h2 className="text-lg font-semibold">
+              Projekt graficzny
+              {designerQuotes && designerQuotes.length > 0 && (
+                <span className="text-brand-chrom font-normal"> ({designerQuotes.length})</span>
+              )}
+            </h2>
+          </div>
+          <p className="text-sm text-brand-chrom mb-4">
+            Grafika wybierasz osobno od studia — to dwie różne usługi i dwie różne
+            decyzje.
+          </p>
+
+          {designerContact && <ContactCard contact={designerContact} />}
+
+          {!designerQuotes || designerQuotes.length === 0 ? (
+            <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
+              <p className="text-sm text-brand-chrom">
+                Szukamy dla Ciebie grafika. Gdy przyśle wycenę, dostaniesz maila.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {designerQuotes.map((q: any) => {
+                const d = designerMap[q.designer_id];
+                const wybrany = q.status === "chosen";
+                const odrzucony = q.status === "rejected";
+                const nazwa = d?.display_name || "Grafik";
+                return (
+                  <div
+                    key={q.id}
+                    className={`bg-brand-grafit-light border rounded-2xl p-6 ${
+                      wybrany ? "border-brand-lime/60" : "border-brand-border"
+                    } ${odrzucony ? "opacity-60" : ""}`}
+                  >
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold">{nazwa}</p>
+                          {wybrany && (
+                            <span className="text-xs px-2 py-1 rounded-full font-medium bg-brand-lime/15 text-brand-lime">
+                              Wybrany
+                            </span>
+                          )}
+                        </div>
+                        {d?.city && <p className="text-sm text-brand-chrom">{d.city}</p>}
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">
+                          {q.price_max && q.price_max !== q.price_min
+                            ? `${q.price_min}–${q.price_max} zł`
+                            : `${q.price_min} zł`}
+                        </p>
+                        {q.estimated_days && (
+                          <p className="text-xs text-brand-chrom">
+                            realizacja: {q.estimated_days} dni
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {q.comment && (
+                      <p className="mt-3 text-sm text-brand-chrom whitespace-pre-wrap">
+                        {q.comment}
+                      </p>
+                    )}
+
+                    {!wybranyGrafik && !["completed", "cancelled"].includes(order.status) && (
+                      <ChooseDesignerButton
+                        quoteId={q.id}
+                        orderId={order.id}
+                        designerName={nazwa}
+                      />
+                    )}
+
+                    <MessageThread
+                      track="designer"
+                      orderId={order.id}
+                      studioId={q.designer_id}
+                      viewer="client"
+                      messages={designerThreadFor(q.designer_id)}
+                      otherPartyName={nazwa}
+                      canWrite={
+                        !["completed", "cancelled"].includes(order.status) &&
+                        (!wybranyGrafik || wybrany)
+                      }
+                      closedNote="Rozmowa zamknięta — wybrałeś innego grafika."
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

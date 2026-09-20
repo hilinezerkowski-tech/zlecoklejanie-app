@@ -124,6 +124,24 @@ export default async function OrderDetailPage({
     .eq("order_id", id)
     .order("assigned_at", { ascending: true });
 
+  // Wyceny grafikow i rozmowy z klientem (migracja 015) — admin tylko czyta
+  const { data: designerQuotes } = await supabase
+    .from("designer_quotes")
+    .select("id, designer_id, price_min, price_max, estimated_days, comment, status")
+    .eq("order_id", id);
+  const wycenaGrafika: Record<string, any> = {};
+  for (const q of designerQuotes || []) wycenaGrafika[q.designer_id] = q;
+
+  const { data: designerMessages } = await supabase
+    .from("order_designer_messages")
+    .select("id, designer_id, sender_role, body, created_at")
+    .eq("order_id", id)
+    .order("created_at", { ascending: true });
+  const rozmowaGrafika = (designerId: string): ThreadMessage[] =>
+    (designerMessages ?? []).filter(
+      (m: any) => m.designer_id === designerId
+    ) as ThreadMessage[];
+
   const przypisaniGraficy = (designerAssignments || []).map((a: any) => a.designer_id);
   const { data: aktywniGraficy } = await supabase
     .from("designers")
@@ -169,6 +187,11 @@ export default async function OrderDetailPage({
     message: "Nowa wiadomość w rozmowie",
     designer_brief: "Brief do grafika",
     designer_brief_resend: "Brief do grafika (wysłany ponownie)",
+    designer_quote: "Wycena od grafika",
+    designer_quote_update: "Zmieniona wycena grafika",
+    designer_chosen: "Klient wybrał grafika",
+    designer_chosen_client: "Potwierdzenie wyboru grafika",
+    designer_message: "Nowa wiadomość (grafik)",
   };
 
   const roleLabels: Record<string, string> = {
@@ -444,6 +467,44 @@ export default async function OrderDetailPage({
                         {a.brief}
                       </p>
                     </details>
+
+                    {wycenaGrafika[a.designer_id] && (
+                      <div className="mt-3 p-3 bg-brand-grafit-light border border-brand-border rounded-lg">
+                        <p className="text-sm font-medium">
+                          Wycena:{" "}
+                          {wycenaGrafika[a.designer_id].price_max &&
+                          wycenaGrafika[a.designer_id].price_max !==
+                            wycenaGrafika[a.designer_id].price_min
+                            ? `${wycenaGrafika[a.designer_id].price_min}–${wycenaGrafika[a.designer_id].price_max} zł`
+                            : `${wycenaGrafika[a.designer_id].price_min} zł`}
+                          {wycenaGrafika[a.designer_id].estimated_days
+                            ? ` · ${wycenaGrafika[a.designer_id].estimated_days} dni`
+                            : ""}
+                          {wycenaGrafika[a.designer_id].status === "chosen" && (
+                            <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-medium bg-brand-lime/15 text-brand-lime">
+                              Wybrany przez klienta
+                            </span>
+                          )}
+                        </p>
+                        {wycenaGrafika[a.designer_id].comment && (
+                          <p className="mt-1 text-sm text-brand-chrom whitespace-pre-wrap">
+                            {wycenaGrafika[a.designer_id].comment}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {rozmowaGrafika(a.designer_id).length > 0 && (
+                      <MessageThread
+                        track="designer"
+                        orderId={order.id}
+                        studioId={a.designer_id}
+                        viewer="admin"
+                        messages={rozmowaGrafika(a.designer_id)}
+                        canWrite={false}
+                        otherPartyName={d?.display_name || "Grafik"}
+                      />
+                    )}
                   </div>
                   <DesignerAssignmentActions orderId={order.id} designerId={a.designer_id} />
                 </div>

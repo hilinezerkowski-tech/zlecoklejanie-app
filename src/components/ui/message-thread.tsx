@@ -3,16 +3,20 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { sendOrderMessage } from "@/app/actions/messages";
+import { sendOrderDesignerMessage } from "@/app/actions/designer-messages";
 
 export type ThreadMessage = {
   id: string;
-  sender_role: "client" | "studio";
+  sender_role: "client" | "studio" | "designer";
   body: string;
   created_at: string;
 };
 
+/** Który tor rozmowy: klient <-> studio czy klient <-> grafik. */
+export type ThreadTrack = "studio" | "designer";
+
 /**
- * Rozmowa klient <-> studio w ramach zlecenia.
+ * Rozmowa w ramach zlecenia — klient <-> studio albo klient <-> grafik.
  * `viewer` decyduje, które dymki są "moje" (po prawej).
  * `canWrite=false` => tylko odczyt (admin, zamknięta rozmowa).
  * Odświeżanie: co 20 s, tylko gdy karta jest widoczna (bez websocketów — prościej i stabilniej).
@@ -25,14 +29,17 @@ export function MessageThread({
   canWrite,
   otherPartyName,
   closedNote,
+  track = "studio",
 }: {
   orderId: string;
+  /** Druga strona rozmowy: id studia albo id grafika (zależnie od `track`). */
   studioId: string;
-  viewer: "client" | "studio" | "admin";
+  viewer: "client" | "studio" | "designer" | "admin";
   messages: ThreadMessage[];
   canWrite: boolean;
   otherPartyName: string;
   closedNote?: string;
+  track?: ThreadTrack;
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -61,7 +68,10 @@ export function MessageThread({
     if (!body || pending) return;
     setError(null);
     startTransition(async () => {
-      const res = await sendOrderMessage(orderId, studioId, body);
+      const res =
+        track === "designer"
+          ? await sendOrderDesignerMessage(orderId, studioId, body)
+          : await sendOrderMessage(orderId, studioId, body);
       if (res.ok) {
         setText("");
         router.refresh();
@@ -71,7 +81,7 @@ export function MessageThread({
     });
   }
 
-  const label = (role: "client" | "studio") =>
+  const label = (role: ThreadMessage["sender_role"]) =>
     viewer === role ? "Ty" : role === "client" ? "Klient" : otherPartyName;
 
   return (
@@ -86,8 +96,9 @@ export function MessageThread({
           className="space-y-2 max-h-80 overflow-y-auto overscroll-contain pr-1 mb-3"
         >
           {messages.map((m) => {
+            // Admin tylko podglada — ustawiamy wykonawce po prawej, klienta po lewej
             const mine =
-              viewer === "admin" ? m.sender_role === "studio" : m.sender_role === viewer;
+              viewer === "admin" ? m.sender_role !== "client" : m.sender_role === viewer;
             return (
               <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div
