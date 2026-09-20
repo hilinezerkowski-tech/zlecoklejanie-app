@@ -35,6 +35,7 @@ const menuItems: Record<string, { label: string; href: string; icon: string }[]>
   ],
   designer: [
     { label: "Dashboard", href: "/grafik", icon: "📊" },
+    { label: "Briefy", href: "/grafik/briefy", icon: "📋" },
     { label: "Mój profil", href: "/grafik/profil", icon: "🎨" },
   ],
 };

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendAssignedEmail } from "@/lib/notify-assigned";
+import { etykietaZlecenia, sendDesignerBrief } from "@/lib/designer-brief";
 
 type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -170,4 +171,195 @@ export async function unassignStudio(
 
   revalidateOrder(orderId);
   return { ok: true, message: "Przypisanie usunięte." };
+}
+
+// =====================================================================
+// Dobór grafika (migracja 014)
+// =====================================================================
+
+const MAX_GRAFIKOW = 3;
+
+/**
+ * Sygnał „klient chce, żebyśmy dobrali grafika". Zwykle przychodzi
+ * z formularza na landingu, ale admin musi móc ustawić go ręcznie —
+ * klient równie często prosi o to przez telefon.
+ */
+export async function setNeedsDesigner(
+  orderId: string,
+  value: boolean
+): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("orders")
+    .update({ needs_designer: value })
+    .eq("id", orderId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateOrder(orderId);
+  return { ok: true };
+}
+
+/**
+ * Przypisuje grafika do zlecenia i wysyła mu brief.
+ *
+ * Kolejność ma znaczenie: najpierw zapis (ślad w bazie), potem mail.
+ * Gdyby było odwrotnie, nieudany zapis zostawiłby grafika z briefem,
+ * o którym panel nic nie wie. Nieudany mail NIE cofa przypisania —
+ * admin widzi status wysyłki i może wysłać ponownie.
+ */
+export async function assignDesigner(
+  orderId: string,
+  designerId: string,
+  brief: string
+): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  const tresc = brief.trim();
+  if (tresc.length < 20) {
+    return { ok: false, error: "Brief jest za krótki — grafik musi wiedzieć, co ma zaprojektować." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: order } = await admin
+    .from("orders")
+    .select("id, car_brand, car_model, city")
+    .eq("id", orderId)
+    .single();
+  if (!order) return { ok: false, error: "Nie znaleziono zlecenia." };
+
+  const { data: designer } = await admin
+    .from("designers")
+    .select("id, display_name, status")
+    .eq("id", designerId)
+    .maybeSingle();
+  if (!designer) return { ok: false, error: "Nie znaleziono grafika." };
+  if (designer.status !== "active") {
+    return { ok: false, error: "Brief można wysłać tylko do aktywnego grafika." };
+  }
+
+  const { count } = await admin
+    .from("order_designer_assignments")
+    .select("id", { count: "exact", head: true })
+    .eq("order_id", orderId);
+  if ((count ?? 0) >= MAX_GRAFIKOW) {
+    return { ok: false, error: `To zlecenie ma już ${MAX_GRAFIKOW} grafików.` };
+  }
+
+  const { data: row, error: insertErr } = await admin
+    .from("order_designer_assignments")
+    .insert({
+      order_id: orderId,
+      designer_id: designerId,
+      brief: tresc,
+      assigned_by: auth.userId,
+    })
+    .select("id")
+    .single();
+
+  if (insertErr || !row) {
+    if (insertErr?.code === "23505") {
+      return { ok: false, error: "Ten grafik już dostał brief do tego zlecenia." };
+    }
+    return { ok: false, error: `Błąd zapisu przypisania: ${insertErr?.message}` };
+  }
+
+  // Zlecenie z przypisanym grafikiem to zawsze zlecenie „z grafikiem"
+  await admin.from("orders").update({ needs_designer: true }).eq("id", orderId);
+
+  const out = await sendDesignerBrief(admin, {
+    orderId,
+    designerId,
+    brief: tresc,
+    orderLabel: etykietaZlecenia(order),
+  });
+
+  const emailStatus = out.ok ? out.result.status : "failed";
+  const emailError = out.ok ? out.result.error ?? null : out.error;
+  await admin
+    .from("order_designer_assignments")
+    .update({ email_status: emailStatus, email_error: emailError?.slice(0, 500) ?? null })
+    .eq("id", row.id);
+
+  revalidateOrder(orderId);
+
+  if (emailStatus !== "sent") {
+    return {
+      ok: false,
+      error:
+        `Grafik przypisany, ale mail NIE poszedł (${emailError || emailStatus}). ` +
+        "Brief jest widoczny w jego panelu — możesz wysłać ponownie.",
+    };
+  }
+  return { ok: true, message: `Brief wysłany do „${designer.display_name}" na ${out.ok ? out.recipient : ""}.` };
+}
+
+/** Ponowna wysyłka briefu — treść bierzemy z zapisanego przypisania, nie z formularza. */
+export async function resendDesignerBrief(
+  orderId: string,
+  designerId: string
+): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  const admin = createAdminClient();
+  const { data: row } = await admin
+    .from("order_designer_assignments")
+    .select("id, brief")
+    .eq("order_id", orderId)
+    .eq("designer_id", designerId)
+    .maybeSingle();
+  if (!row) return { ok: false, error: "Ten grafik nie jest przypisany do zlecenia." };
+
+  const { data: order } = await admin
+    .from("orders")
+    .select("car_brand, car_model, city")
+    .eq("id", orderId)
+    .single();
+  if (!order) return { ok: false, error: "Nie znaleziono zlecenia." };
+
+  const out = await sendDesignerBrief(admin, {
+    orderId,
+    designerId,
+    brief: row.brief,
+    orderLabel: etykietaZlecenia(order),
+    resend: true,
+  });
+
+  const emailStatus = out.ok ? out.result.status : "failed";
+  const emailError = out.ok ? out.result.error ?? null : out.error;
+  await admin
+    .from("order_designer_assignments")
+    .update({ email_status: emailStatus, email_error: emailError?.slice(0, 500) ?? null })
+    .eq("id", row.id);
+
+  revalidateOrder(orderId);
+  if (emailStatus !== "sent") {
+    return { ok: false, error: `Resend nie przyjął wysyłki: ${emailError || emailStatus}` };
+  }
+  return { ok: true, message: `Wysłano ponownie na ${out.ok ? out.recipient : ""}.` };
+}
+
+/** Usunięcie przypisania grafika. Ślad po odpowiedzi znika razem z wierszem. */
+export async function unassignDesigner(
+  orderId: string,
+  designerId: string
+): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("order_designer_assignments")
+    .delete()
+    .eq("order_id", orderId)
+    .eq("designer_id", designerId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidateOrder(orderId);
+  return { ok: true, message: "Przypisanie grafika usunięte." };
 }

@@ -36,6 +36,7 @@ export default async function ZleceniaPage({
       car_model,
       city,
       status,
+      needs_designer,
       created_at,
       client:profiles!orders_client_id_fkey(email, full_name)
     `)
@@ -139,7 +140,17 @@ export default async function ZleceniaPage({
                     className="border-b border-brand-border/50 hover:bg-white/[0.02] transition"
                   >
                     <td className="px-6 py-4 text-sm">
-                      {serviceLabels[order.service_type] || order.service_type}
+                      <span className="flex items-center gap-2">
+                        {serviceLabels[order.service_type] || order.service_type}
+                        {order.needs_designer && (
+                          <span
+                            title="Klient chce, żebyśmy dobrali grafika"
+                            className="text-xs px-2 py-0.5 rounded-full font-medium bg-purple-400/15 text-purple-400 whitespace-nowrap"
+                          >
+                            🎨 grafik
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-sm">
                       {order.car_brand} {order.car_model}
@@ -193,6 +204,7 @@ export default async function ZleceniaPage({
                     order.client?.full_name,
                     order.client?.email,
                     st.label,
+                    order.needs_designer ? "grafik dobór grafika" : null,
                   ]
                     .filter(Boolean)
                     .join(" "),

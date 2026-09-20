@@ -5,6 +5,13 @@ import { OutcomeButtons } from "./outcome-buttons";
 import { AssignmentActions } from "./assignment-actions";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 import { sortujWgOdleglosci } from "@/lib/geo";
+import { domyslnyBrief } from "@/lib/designer-brief";
+import {
+  AssignDesignerForm,
+  DesignerAssignmentActions,
+  MAX_GRAFIKOW,
+  NeedsDesignerToggle,
+} from "./designer-section";
 
 export default async function OrderDetailPage({
   params,
@@ -98,6 +105,35 @@ export default async function OrderDetailPage({
     order.city
   );
 
+  // Dobór grafika (migracja 014). Brief widzi grafik, więc bierzemy tylko
+  // dane zlecenia — kontakt do klienta zostaje po stronie admina.
+  const { data: designerAssignments } = await supabase
+    .from("order_designer_assignments")
+    .select(`
+      id,
+      designer_id,
+      brief,
+      status,
+      email_status,
+      email_error,
+      assigned_at,
+      responded_at,
+      response_note,
+      designer:designers!order_designer_assignments_designer_id_fkey(display_name, city)
+    `)
+    .eq("order_id", id)
+    .order("assigned_at", { ascending: true });
+
+  const przypisaniGraficy = (designerAssignments || []).map((a: any) => a.designer_id);
+  const { data: aktywniGraficy } = await supabase
+    .from("designers")
+    .select("id, display_name, city, specializations, works_on_vehicle_templates")
+    .eq("status", "active")
+    .order("display_name");
+  const wolniGraficy = (aktywniGraficy || []).filter(
+    (d: any) => !przypisaniGraficy.includes(d.id)
+  );
+
   const serviceLabels: Record<string, string> = {
     oklejanie: "Oklejanie",
     ppf: "PPF",
@@ -131,6 +167,8 @@ export default async function OrderDetailPage({
     lead_admin_alert: "Alert o nowym leadzie",
     lead_autoreply: "Potwierdzenie przyjęcia zapytania",
     message: "Nowa wiadomość w rozmowie",
+    designer_brief: "Brief do grafika",
+    designer_brief_resend: "Brief do grafika (wysłany ponownie)",
   };
 
   const roleLabels: Record<string, string> = {
@@ -168,9 +206,16 @@ export default async function OrderDetailPage({
             {order.car_brand && ` — ${order.car_brand} ${order.car_model || ""}`}
           </h1>
         </div>
-        <span className={`text-sm px-3 py-1 rounded-full font-medium ${st.color}`}>
-          {st.label}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {order.needs_designer && (
+            <span className="text-sm px-3 py-1 rounded-full font-medium bg-purple-400/15 text-purple-400">
+              🎨 Grafik
+            </span>
+          )}
+          <span className={`text-sm px-3 py-1 rounded-full font-medium ${st.color}`}>
+            {st.label}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -331,6 +376,99 @@ export default async function OrderDetailPage({
             Brak aktywnych studiów do przypisania.{" "}
             <a href="/admin/studia" className="text-brand-lime hover:underline">
               Dodaj studio →
+            </a>
+          </p>
+        )}
+      </div>
+
+      {/* Dobór grafika */}
+      <div className="mt-6 bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
+        <div className="flex items-start justify-between gap-4 mb-1 flex-wrap">
+          <h2 className="font-semibold">
+            Dobór grafika ({designerAssignments?.length || 0}/{MAX_GRAFIKOW})
+          </h2>
+          <NeedsDesignerToggle orderId={order.id} value={!!order.needs_designer} />
+        </div>
+        <p className="text-sm text-brand-chrom mb-4">
+          {order.needs_designer
+            ? "Klient prosi o dobranie grafika. Wyślij brief — grafik odpowiada w swoim panelu."
+            : "To zlecenie nie ma sygnału „chcę grafika”. Brief i tak możesz wysłać."}
+        </p>
+
+        {designerAssignments && designerAssignments.length > 0 ? (
+          <div className="space-y-3 mb-4">
+            {designerAssignments.map((a: any) => {
+              const d = Array.isArray(a.designer) ? a.designer[0] : a.designer;
+              const odp = {
+                pending: { label: "Czeka na odpowiedź", color: "bg-amber-400/15 text-amber-400" },
+                accepted: { label: "Bierze projekt", color: "bg-brand-lime/15 text-brand-lime" },
+                rejected: { label: "Odmówił", color: "bg-red-400/15 text-red-400" },
+              }[a.status as string] || { label: a.status, color: "bg-white/10 text-brand-chrom" };
+
+              return (
+                <div
+                  key={a.id}
+                  className="p-4 bg-brand-grafit border border-brand-border rounded-xl flex items-start justify-between gap-4"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <p className="font-medium text-sm">{d?.display_name || "Grafik"}</p>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${odp.color}`}>
+                        {odp.label}
+                      </span>
+                      {a.email_status && a.email_status !== "sent" && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-400/15 text-red-400">
+                          mail: {a.email_status}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-brand-chrom">
+                      {d?.city ? `${d.city} · ` : ""}
+                      wysłano {new Date(a.assigned_at).toLocaleDateString("pl-PL")}
+                      {a.responded_at &&
+                        ` · odpowiedź ${new Date(a.responded_at).toLocaleDateString("pl-PL")}`}
+                    </p>
+                    {a.response_note && (
+                      <p className="mt-2 text-sm text-brand-chrom">
+                        Komentarz grafika: {a.response_note}
+                      </p>
+                    )}
+                    {a.email_error && (
+                      <p className="mt-2 text-xs text-red-400">Błąd maila: {a.email_error}</p>
+                    )}
+                    <details className="mt-2">
+                      <summary className="text-xs text-brand-chrom cursor-pointer hover:text-brand-kosc">
+                        Pokaż wysłany brief
+                      </summary>
+                      <p className="mt-2 text-sm text-brand-chrom whitespace-pre-wrap">
+                        {a.brief}
+                      </p>
+                    </details>
+                  </div>
+                  <DesignerAssignmentActions orderId={order.id} designerId={a.designer_id} />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-brand-chrom mb-4">
+            Żaden grafik nie dostał jeszcze briefu do tego zlecenia.
+          </p>
+        )}
+
+        {(designerAssignments?.length || 0) < MAX_GRAFIKOW && wolniGraficy.length > 0 && (
+          <AssignDesignerForm
+            orderId={order.id}
+            designers={wolniGraficy as any}
+            defaultBrief={domyslnyBrief(order)}
+          />
+        )}
+
+        {wolniGraficy.length === 0 && (
+          <p className="text-sm text-brand-chrom/60">
+            Brak aktywnych grafików do przypisania.{" "}
+            <a href="/admin/graficy" className="text-brand-lime hover:underline">
+              Dodaj grafika →
             </a>
           </p>
         )}

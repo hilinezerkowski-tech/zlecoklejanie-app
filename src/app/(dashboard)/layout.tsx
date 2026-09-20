@@ -28,6 +28,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .in("channel", ["both", "panel"]);
     badges = { "/studio/wiadomosci": count || 0 };
   }
+  // Grafik: briefy czekajace na odpowiedz (RLS: widzi tylko swoje przypisania)
+  if (profile.role === "designer") {
+    const { count } = await supabase
+      .from("order_designer_assignments")
+      .select("id", { count: "exact", head: true })
+      .eq("designer_id", user.id)
+      .eq("status", "pending");
+    badges = { "/grafik/briefy": count || 0 };
+  }
 
   return (
     <div className="flex min-h-screen">
