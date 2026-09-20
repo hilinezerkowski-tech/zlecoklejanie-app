@@ -16,6 +16,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!profile) redirect("/login");
 
+  // Licznik nieprzeczytanych wiadomości od admina (RLS: studio widzi tylko swoje).
+  // Brak tabeli/migracji => count null => brak plakietki, panel działa dalej.
+  let badges: Record<string, number> | undefined;
+  if (profile.role === "studio") {
+    const { count } = await supabase
+      .from("studio_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("studio_id", user.id)
+      .is("read_at", null)
+      .in("channel", ["both", "panel"]);
+    badges = { "/studio/wiadomosci": count || 0 };
+  }
+
   return (
     <div className="flex min-h-screen">
       <Sidebar
@@ -23,6 +36,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         name={profile.full_name || profile.email}
         email={profile.email}
         avatarUrl={profile.avatar_url}
+        badges={badges}
       />
       <main className="flex-1 md:ml-64 p-4 pt-[72px] md:p-8 md:pt-8">
         {children}

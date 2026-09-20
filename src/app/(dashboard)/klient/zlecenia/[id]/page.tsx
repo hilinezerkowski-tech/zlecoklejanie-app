@@ -70,15 +70,18 @@ export default async function ClientOrderDetailPage({
       verified_at: string | null;
     }
   > = {};
+  // Studia ukryte przez admina (miękkie usunięcie) — ich wycen klient nie wybiera
+  const deletedStudioIds = new Set<string>();
   if (studioIds.length > 0) {
     const { data: studios } = await supabase
       .from("studios")
       // UWAGA: tabela studios nie ma kolumny `city` — miasto siedzi w `address`.
       // Pytanie o nieistniejaca kolumne zwracalo blad i klient widzial
       // wszedzie generyczne "Studio" zamiast nazwy firmy.
-      .select("id, business_name, address, slug, verified_at")
+      .select("id, business_name, address, slug, verified_at, deleted_at")
       .in("id", studioIds);
     for (const s of studios ?? []) {
+      if (s.deleted_at) deletedStudioIds.add(s.id);
       studioMap[s.id] = {
         business_name: s.business_name,
         city: s.address,
@@ -100,7 +103,11 @@ export default async function ClientOrderDetailPage({
   const photos: string[] = Array.isArray(order.photos) ? order.photos : [];
   const status = statusLabels[order.status] || statusLabels.new;
   const decided = ["chosen", "completed", "cancelled"].includes(order.status);
-  const list = quotes ?? [];
+  // Wycena usuniętego studia znika z porównania; zostaje tylko, gdy klient
+  // już ją wybrał (historia rozstrzygniętego zlecenia musi być kompletna).
+  const list = (quotes ?? []).filter(
+    (q) => !deletedStudioIds.has(q.studio_id) || q.id === order.chosen_quote_id
+  );
 
   // Kontakt do wybranego studia — RPC SECURITY DEFINER wydaje dane tylko
   // stronom rozstrzygnietego zlecenia (patrz migracja 010)

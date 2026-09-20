@@ -8,10 +8,13 @@ export function StudioActions({
   studioId,
   currentStatus,
   verifiedAt,
+  children,
 }: {
   studioId: string;
   currentStatus: string;
   verifiedAt?: string | null;
+  /** Dodatkowe przyciski karty (Edytuj / Wiadomość / Usuń). */
+  children?: React.ReactNode;
 }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -96,6 +99,7 @@ export function StudioActions({
           Aktywuj
         </button>
       )}
+      {children}
     </div>
   );
 }

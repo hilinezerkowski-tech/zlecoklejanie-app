@@ -114,26 +114,36 @@ async function writeEmailLog(
   }
 }
 
+/** Nadawca wiadomości pisanych ręcznie przez admina (odpowiedzi trafiają do skrzynki kontaktowej). */
+export const EMAIL_FROM_KONTAKT =
+  "ZlecOklejanie.pl <kontakt@zlecoklejanie.pl>";
+
+export type SendEmailResult = {
+  status: "sent" | "failed" | "skipped";
+  error?: string;
+};
+
+type SendEmailOptions = { replyTo?: string; from?: string; log?: EmailLogMeta };
+
 /**
- * Wysyłka przez Resend. Brak RESEND_API_KEY => cichy skip (feature flag),
- * żeby build i akcje działały także bez skonfigurowanego klucza.
- * Zwraca true tylko przy potwierdzonym przyjęciu przez Resend.
+ * Wysyłka przez Resend ze szczegółowym wynikiem. Brak RESEND_API_KEY =>
+ * 'skipped' (feature flag), żeby build i akcje działały także bez klucza.
  *
  * Gdy podano `opts.log`, wynik (sent/failed/skipped) trafia do historii
  * powiadomień widocznej w panelu admina.
  */
-export async function sendEmail(
+export async function sendEmailResult(
   to: string,
   subject: string,
   html: string,
-  opts?: { replyTo?: string; log?: EmailLogMeta }
-): Promise<boolean> {
+  opts?: SendEmailOptions
+): Promise<SendEmailResult> {
   const log = opts?.log;
   const key = process.env.RESEND_API_KEY;
   if (!key) {
     console.warn("[email] RESEND_API_KEY not set — skipping:", subject);
     if (log) await writeEmailLog(log, to, subject, "skipped", null, "Brak RESEND_API_KEY");
-    return false;
+    return { status: "skipped", error: "Brak RESEND_API_KEY" };
   }
 
   try {
@@ -144,7 +154,7 @@ export async function sendEmail(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: EMAIL_FROM,
+        from: opts?.from || EMAIL_FROM,
         to: [to],
         subject,
         html,
@@ -155,8 +165,9 @@ export async function sendEmail(
     if (!res.ok) {
       const errText = await res.text();
       console.error("[email] Resend error:", res.status, errText);
-      if (log) await writeEmailLog(log, to, subject, "failed", null, `HTTP ${res.status}: ${errText}`);
-      return false;
+      const error = `HTTP ${res.status}: ${errText}`;
+      if (log) await writeEmailLog(log, to, subject, "failed", null, error);
+      return { status: "failed", error };
     }
 
     // Resend zwraca { id } — zapisujemy, żeby dało się znaleźć mail w ich logach
@@ -167,10 +178,20 @@ export async function sendEmail(
       /* brak JSON — nie szkodzi */
     }
     if (log) await writeEmailLog(log, to, subject, "sent", providerId);
-    return true;
+    return { status: "sent" };
   } catch (e) {
     console.error("[email] send failed:", e);
     if (log) await writeEmailLog(log, to, subject, "failed", null, String(e));
-    return false;
+    return { status: "failed", error: String(e) };
   }
+}
+
+/** Skrót: true tylko przy potwierdzonym przyjęciu maila przez Resend. */
+export async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  opts?: SendEmailOptions
+): Promise<boolean> {
+  return (await sendEmailResult(to, subject, html, opts)).status === "sent";
 }
