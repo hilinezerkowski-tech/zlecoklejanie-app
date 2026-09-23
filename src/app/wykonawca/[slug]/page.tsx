@@ -28,6 +28,7 @@ type StudioProfile = {
   provider_type: "studio" | "freelancer" | null;
   google_rating: number | null;
   google_reviews_count: number | null;
+  portfolio: { url: string; path: string }[] | null;
 };
 
 const WORK_MODE_LABELS: Record<string, string> = {
@@ -49,7 +50,7 @@ async function getProfile(slug: string): Promise<StudioProfile | null> {
   const { data } = await supabase
     .from("studios")
     .select(
-      "id, business_name, slug, description, specializations, foil_brands, films_used, instagram, instagram_url, website, address, service_radius_km, years_experience, work_mode, provider_type, google_rating, google_reviews_count"
+      "id, business_name, slug, description, specializations, foil_brands, films_used, instagram, instagram_url, website, address, service_radius_km, years_experience, work_mode, provider_type, google_rating, google_reviews_count, portfolio"
     )
     .eq("slug", slug)
     .eq("status", "active")
@@ -236,6 +237,26 @@ export default async function WykonawcaProfilePage({
             </div>
           </section>
         ) : null}
+
+        {Array.isArray(p.portfolio) && p.portfolio.length > 0 && (
+          <section className="mt-8">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-chrom">
+              Realizacje
+            </h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {p.portfolio.map((it) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={it.path}
+                  src={it.url}
+                  alt={`Realizacja \u2014 ${name}`}
+                  loading="lazy"
+                  className="h-40 w-full rounded-xl border border-brand-border object-cover"
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
         {ig && (
           <section className="mt-8 rounded-2xl border border-brand-border bg-brand-grafit-light p-6">

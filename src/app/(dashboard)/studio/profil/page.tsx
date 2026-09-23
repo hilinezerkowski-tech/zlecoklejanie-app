@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { ProfileForm } from "./profile-form";
+import { PortfolioManager } from "@/components/ui/portfolio-manager";
 
 // Profil publiczny studia — edytowalny przez samo studio.
 // RLS „Studio can update own" (auth.uid() = id) pozwala zapisywać własny wiersz.
@@ -16,6 +17,7 @@ export default async function StudioProfilPage() {
       id,
       business_name,
       is_paused,
+      portfolio,
       description,
       specializations,
       foil_brands,
@@ -45,7 +47,25 @@ export default async function StudioProfilPage() {
           </p>
         </div>
       ) : (
-        <ProfileForm studio={studio} />
+        <>
+          <ProfileForm studio={studio} />
+
+          <section className="mt-10">
+            <h2 className="text-lg font-semibold mb-1">Portfolio realizacji</h2>
+            <p className="text-brand-chrom mb-4 text-sm">
+              Wgraj zdjęcia swoich prac (do 12). Pokażą się na Twoim publicznym
+              profilu i pomogą klientom wybrać właśnie Ciebie.
+            </p>
+            <PortfolioManager
+              studioId={studio.id as string}
+              items={
+                Array.isArray((studio as { portfolio?: unknown }).portfolio)
+                  ? ((studio as { portfolio: { url: string; path: string }[] }).portfolio)
+                  : []
+              }
+            />
+          </section>
+        </>
       )}
     </div>
   );
