@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { AssignStudioForm } from "./assign-form";
 import { OutcomeButtons } from "./outcome-buttons";
+import { OrderStatusControl } from "./status-control";
 import { AssignmentActions } from "./assignment-actions";
 import { OrderDetailsEditor, ClientEditor } from "./order-edit";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
@@ -618,6 +619,7 @@ export default async function OrderDetailPage({
             <OutcomeButtons orderId={order.id} />
           </>
         )}
+        <OrderStatusControl orderId={order.id} status={order.status} />
       </div>
 
       {/* Rozmowy */}

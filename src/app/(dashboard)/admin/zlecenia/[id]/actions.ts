@@ -529,3 +529,91 @@ export async function updateOrderClient(
   revalidateOrder(orderId);
   return { ok: true, message: "Zapisano dane klienta." };
 }
+
+// =========================================================
+// FAZA A4 — ręczna zmiana statusu i cofnięcie wyniku (tylko admin)
+// =========================================================
+
+const ORDER_STATUSES = [
+  "new",
+  "assigned",
+  "quoted",
+  "chosen",
+  "completed",
+  "cancelled",
+] as const;
+
+/**
+ * Ręczne ustawienie statusu zlecenia przez admina — pełna kontrola, także
+ * cofnięcie z "completed"/"cancelled" z powrotem do stanu roboczego.
+ * Nie dotyka toru grafika (designer_quotes) ani chosen_quote_id.
+ */
+export async function setOrderStatus(
+  orderId: string,
+  status: string
+): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  if (!(ORDER_STATUSES as readonly string[]).includes(status)) {
+    return { ok: false, error: "Nieznany status." };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.from("orders").update({ status }).eq("id", orderId);
+  if (error) return { ok: false, error: `Błąd zapisu: ${error.message}` };
+
+  revalidateOrder(orderId);
+  return { ok: true, message: "Zmieniono status." };
+}
+
+/**
+ * Cofnięcie wyniku "Doszło/Nie doszło" — przywraca zlecenie do stanu roboczego.
+ * Docelowy status liczony ze stanu faktycznego zlecenia:
+ *   wybrana wycena → "chosen"; jakakolwiek wycena → "quoted";
+ *   jakiekolwiek przypisanie → "assigned"; inaczej → "new".
+ */
+export async function undoOrderOutcome(orderId: string): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  const admin = createAdminClient();
+
+  const { data: order } = await admin
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .single();
+  if (!order) return { ok: false, error: "Nie znaleziono zlecenia." };
+  if (!["completed", "cancelled"].includes(order.status)) {
+    return { ok: false, error: "To zlecenie nie ma jeszcze oznaczonego wyniku." };
+  }
+
+  const [{ data: chosen }, { count: quoteCount }, { count: assignCount }] = await Promise.all([
+    admin
+      .from("quotes")
+      .select("id")
+      .eq("order_id", orderId)
+      .eq("status", "chosen")
+      .maybeSingle(),
+    admin.from("quotes").select("id", { count: "exact", head: true }).eq("order_id", orderId),
+    admin
+      .from("order_assignments")
+      .select("id", { count: "exact", head: true })
+      .eq("order_id", orderId),
+  ]);
+
+  const target = chosen
+    ? "chosen"
+    : (quoteCount ?? 0) > 0
+      ? "quoted"
+      : (assignCount ?? 0) > 0
+        ? "assigned"
+        : "new";
+
+  const { error } = await admin.from("orders").update({ status: target }).eq("id", orderId);
+  if (error) return { ok: false, error: `Błąd zapisu: ${error.message}` };
+
+  revalidateOrder(orderId);
+  return { ok: true, message: "Cofnięto wynik." };
+}
