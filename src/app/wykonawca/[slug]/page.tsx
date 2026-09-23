@@ -151,7 +151,7 @@ export default async function WykonawcaProfilePage({
             href={quoteUrl}
             className="rounded-lg bg-brand-lime px-4 py-2 text-sm font-semibold text-brand-grafit hover:opacity-90"
           >
-            Zlec wycene
+            Zleć wycenę
           </a>
         </div>
       </header>
@@ -305,7 +305,7 @@ export default async function WykonawcaProfilePage({
             href={quoteUrl}
             className="mt-4 inline-block rounded-lg bg-brand-grafit px-5 py-3 font-semibold text-brand-kosc hover:opacity-90"
           >
-            Zlec wycene
+            Zleć wycenę
           </a>
         </section>
 
