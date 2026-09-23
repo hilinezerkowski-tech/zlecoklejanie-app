@@ -31,7 +31,7 @@ export async function middleware(request: NextRequest) {
   // Publiczny webhook: Supabase (pg_net) nie wysyla ciasteczek sesji, wiec
   //  /api/lead-alert musi ominac guard. Endpoint broni sie sam (staly odbiorca,
   //  tresc z bazy po ID, tylko swieze leady) — patrz src/app/api/lead-alert.
-  const publicPaths = ["/login", "/auth/callback", "/auth/confirm", "/api/lead-alert", "/wykonawca"];
+  const publicPaths = ["/login", "/auth/callback", "/auth/confirm", "/api/lead-alert", "/wykonawca", "/wykonawcy"];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     return supabaseResponse;
   }

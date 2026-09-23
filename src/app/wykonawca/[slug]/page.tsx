@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { cityFromAddress } from "@/lib/studio-location";
 import { ReviewForm } from "./review-form";
 
 // Publiczny profil wykonawcy: /wykonawca/{slug}
@@ -353,6 +354,25 @@ export default async function WykonawcaProfilePage({
           </p>
         </footer>
       </div>
+      {/* Structured data — LocalBusiness */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": isFreelancer ? "AutoDetailing" : "AutoBodyShop",
+            name,
+            url: `${SITE_URL}/wykonawca/${p.slug}`,
+            ...(cityFromAddress(p.address)
+              ? { address: { "@type": "PostalAddress", addressLocality: cityFromAddress(p.address), addressCountry: "PL" } }
+              : {}),
+            ...(p.portfolio?.[0]?.url ? { image: p.portfolio[0].url } : {}),
+            ...(typeof p.google_rating === "number" && p.google_rating > 0 && p.google_reviews_count
+              ? { aggregateRating: { "@type": "AggregateRating", ratingValue: p.google_rating, reviewCount: p.google_reviews_count } }
+              : {}),
+          }),
+        }}
+      />
     </main>
   );
 }
