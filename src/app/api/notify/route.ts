@@ -30,6 +30,33 @@ function layout(title: string, body: string, ctaUrl: string, ctaLabel: string) {
   </div>`;
 }
 
+// Magic-link do panelu klienta: klient bez hasla wchodzi jednym kliknieciem.
+// generateLink zwraca hashed_token wymieniany na sesje w /auth/confirm; wygasa
+// ~1h — po tym czasie link prowadzi do /login (klient poprosi o nowy). Fallback
+// na goly URL, gdy generateLink zawiedzie.
+async function clientMagicLink(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string,
+  nextPath: string
+): Promise<string> {
+  try {
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+    });
+    const hashed = data?.properties?.hashed_token;
+    if (!error && hashed) {
+      return (
+        `${APP_URL}/auth/confirm?token_hash=${encodeURIComponent(hashed)}` +
+        `&type=magiclink&next=${encodeURIComponent(nextPath)}`
+      );
+    }
+  } catch {
+    /* fallback ponizej */
+  }
+  return `${APP_URL}${nextPath}`;
+}
+
 export async function POST(req: NextRequest) {
   // Autoryzacja: tylko zalogowani uzytkownicy aplikacji
   const supabase = await createClient();
@@ -136,7 +163,7 @@ export async function POST(req: NextRequest) {
             "Masz nowa oferte od studia",
             `<p>Jedno ze studiow wycenilo Twoje zlecenie <strong>${orderLabel}</strong>.</p>
              <p>Porownaj oferty i wybierz studio, ktore najbardziej Ci odpowiada.</p>`,
-            `${APP_URL}/klient/zlecenia/${order.id}`,
+            await clientMagicLink(admin, client.email, `/klient/zlecenia/${order.id}`),
             "Zobacz oferty"
           ),
           { log: { event: "quoted", recipientRole: "client", orderId: order.id } }
@@ -193,7 +220,7 @@ export async function POST(req: NextRequest) {
               `<p>Twoje zlecenie <strong>${orderLabel}</strong> trafilo do: <strong>${studio?.business_name ?? "wybrane studio"}</strong>.</p>
                <p>Kontakt do studia: <strong>${studioProfile.email}</strong>${studioProfile.phone ? ` / ${studioProfile.phone}` : ""}.</p>
                <p>Studio rowniez dostalo Twoj kontakt i moze odezwac sie pierwsze.</p>`,
-              `${APP_URL}/klient/zlecenia/${order.id}`,
+              await clientMagicLink(admin, client.email, `/klient/zlecenia/${order.id}`),
               "Zobacz zlecenie"
             ),
             { log: { event: "chosen_client", recipientRole: "client", orderId: order.id } }
