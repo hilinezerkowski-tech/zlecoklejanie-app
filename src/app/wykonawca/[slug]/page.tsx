@@ -62,6 +62,7 @@ type Review = {
   author_name: string | null;
   rating: number;
   comment: string | null;
+  reply: string | null;
   created_at: string;
 };
 
@@ -69,7 +70,7 @@ async function getReviews(studioId: string): Promise<Review[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("reviews")
-    .select("id, author_name, rating, comment, created_at")
+    .select("id, author_name, rating, comment, reply, created_at")
     .eq("studio_id", studioId)
     .eq("status", "published")
     .order("created_at", { ascending: false })
@@ -287,6 +288,14 @@ export default async function WykonawcaProfilePage({
                   <p className="mt-2 text-xs text-brand-chrom">
                     {new Date(r.created_at).toLocaleDateString("pl-PL")}
                   </p>
+                  {r.reply && (
+                    <div className="mt-3 rounded-lg border-l-2 border-brand-lime bg-brand-grafit px-3 py-2">
+                      <p className="text-xs font-semibold text-brand-lime mb-1">
+                        Odpowiedź wykonawcy
+                      </p>
+                      <p className="whitespace-pre-line text-sm">{r.reply}</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

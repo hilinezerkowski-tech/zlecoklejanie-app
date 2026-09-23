@@ -30,6 +30,7 @@ const menuItems: Record<string, { label: string; href: string; icon: string }[]>
     { label: "Dashboard", href: "/studio", icon: "📊" },
     { label: "Zlecenia", href: "/studio/zlecenia", icon: "📋" },
     { label: "Wiadomości", href: "/studio/wiadomosci", icon: "✉️" },
+    { label: "Opinie", href: "/studio/opinie", icon: "⭐" },
     { label: "Mój profil", href: "/studio/profil", icon: "🏢" },
     { label: "Historia", href: "/studio/historia", icon: "📁" },
   ],
