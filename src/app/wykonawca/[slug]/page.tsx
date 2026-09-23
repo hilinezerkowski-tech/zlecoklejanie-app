@@ -110,7 +110,7 @@ export default async function WykonawcaProfilePage({
   const ig = instagramUrl(p);
   const foils = (p.films_used?.length ? p.films_used : p.foil_brands) || [];
   const modes = (p.work_mode || []).map((m) => WORK_MODE_LABELS[m] || m);
-  const quoteUrl = `${SITE_URL}/?wykonawca=${encodeURIComponent(p.slug || "")}#wycena`;
+  const quoteUrl = `${SITE_URL}/?wykonawca=${encodeURIComponent(p.slug || "")}#zlecenie`;
 
   return (
     <main className="min-h-screen bg-brand-grafit text-brand-kosc">
