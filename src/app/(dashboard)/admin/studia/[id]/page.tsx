@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StudioActions } from "../studio-actions";
 import { RestoreStudioButton, StudioManage } from "../studio-manage";
+import { CopyProfileLink } from "../copy-profile-link";
 import { getStudioDetail } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -167,6 +168,10 @@ export default async function StudioDetailPage({
           </p>
         )}
       </div>
+
+      {studio.status === "active" && studio.slug && (
+        <CopyProfileLink url={`https://zlecoklejanie.pl/wykonawca/${studio.slug}`} />
+      )}
 
       {/* Dwie kolumny: kontakt + oferta */}
       <div className="grid md:grid-cols-2 gap-4">
