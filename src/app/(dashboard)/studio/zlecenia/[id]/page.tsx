@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { signedPhotoUrls } from "@/lib/order-photos";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { QuoteForm } from "./quote-form";
@@ -73,6 +74,7 @@ export default async function StudioOrderDetailPage({
     : { data: [] as any[] };
 
   const photos: string[] = Array.isArray(order.photos) ? order.photos : [];
+  const photoUrls = await signedPhotoUrls(photos);
 
   // Rozstrzygniecie: czy klient juz wybral studio i czy to MY wygralismy
   const decided = ["chosen", "completed"].includes(order.status);
@@ -142,9 +144,9 @@ export default async function StudioOrderDetailPage({
       </div>
 
       {/* Zdjęcia */}
-      {photos.length > 0 && (
+      {photoUrls.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-          {photos.map((src, i) => (
+          {photoUrls.map((src, i) => (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={i}

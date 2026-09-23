@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { signedPhotoUrls } from "@/lib/order-photos";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChooseQuoteButton } from "./choose-quote-button";
@@ -102,6 +103,7 @@ export default async function ClientOrderDetailPage({
     (messages ?? []).filter((m: any) => m.studio_id === studioId) as ThreadMessage[];
 
   const photos: string[] = Array.isArray(order.photos) ? order.photos : [];
+  const photoUrls = await signedPhotoUrls(photos);
   const status = statusLabels[order.status] || statusLabels.new;
   const decided = ["chosen", "completed", "cancelled"].includes(order.status);
   // Wycena usuniętego studia znika z porównania; zostaje tylko, gdy klient
@@ -222,9 +224,9 @@ export default async function ClientOrderDetailPage({
       </div>
 
       {/* Zdjecia */}
-      {photos.length > 0 && (
+      {photoUrls.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
-          {photos.map((src, i) => (
+          {photoUrls.map((src, i) => (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={i}
