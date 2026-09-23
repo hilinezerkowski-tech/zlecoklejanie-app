@@ -22,6 +22,7 @@ const menuItems: Record<string, { label: string; href: string; icon: string }[]>
     { label: "Studia", href: "/admin/studia", icon: "🏢" },
     { label: "Graficy", href: "/admin/graficy", icon: "🎨" },
     { label: "Wrapperzy", href: "/admin/leady-freelancer", icon: "🚗" },
+    { label: "Opinie", href: "/admin/opinie", icon: "⭐" },
     { label: "Eksport CSV", href: "/admin/eksport", icon: "📤" },
     { label: "Ustawienia", href: "/admin/ustawienia", icon: "⚙️" },
   ],

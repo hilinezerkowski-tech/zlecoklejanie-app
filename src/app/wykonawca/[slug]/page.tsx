@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { ReviewForm } from "./review-form";
 
 // Publiczny profil wykonawcy: /wykonawca/{slug}
 // Dostep anonimowy — RLS „Public can view active studios" puszcza status='active'.
@@ -10,6 +11,7 @@ import type { Metadata } from "next";
 const SITE_URL = "https://zlecoklejanie.pl";
 
 type StudioProfile = {
+  id: string;
   business_name: string | null;
   slug: string | null;
   description: string | null;
@@ -47,12 +49,32 @@ async function getProfile(slug: string): Promise<StudioProfile | null> {
   const { data } = await supabase
     .from("studios")
     .select(
-      "business_name, slug, description, specializations, foil_brands, films_used, instagram, instagram_url, website, address, service_radius_km, years_experience, work_mode, provider_type, google_rating, google_reviews_count"
+      "id, business_name, slug, description, specializations, foil_brands, films_used, instagram, instagram_url, website, address, service_radius_km, years_experience, work_mode, provider_type, google_rating, google_reviews_count"
     )
     .eq("slug", slug)
     .eq("status", "active")
     .maybeSingle();
   return (data as StudioProfile) ?? null;
+}
+
+type Review = {
+  id: string;
+  author_name: string | null;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+};
+
+async function getReviews(studioId: string): Promise<Review[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("reviews")
+    .select("id, author_name, rating, comment, created_at")
+    .eq("studio_id", studioId)
+    .eq("status", "published")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  return (data as Review[]) ?? [];
 }
 
 export async function generateMetadata({
@@ -105,6 +127,12 @@ export default async function WykonawcaProfilePage({
   const p = await getProfile(params.slug);
   if (!p) notFound();
 
+  const reviews = await getReviews(p.id);
+  const reviewsCount = reviews.length;
+  const reviewsAvg = reviewsCount
+    ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviewsCount
+    : 0;
+
   const name = p.business_name || "Wykonawca";
   const isFreelancer = p.provider_type === "freelancer";
   const ig = instagramUrl(p);
@@ -133,12 +161,17 @@ export default async function WykonawcaProfilePage({
           <span className="rounded-full bg-brand-lime px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand-grafit">
             {isFreelancer ? "Wrapper mobilny" : "Studio"}
           </span>
-          {typeof p.google_rating === "number" && p.google_rating > 0 && (
+          {reviewsCount > 0 ? (
+            <span className="text-sm text-brand-chrom">
+              ★ {reviewsAvg.toFixed(1)} ({reviewsCount}{" "}
+              {reviewsCount === 1 ? "opinia" : "opinii"})
+            </span>
+          ) : typeof p.google_rating === "number" && p.google_rating > 0 ? (
             <span className="text-sm text-brand-chrom">
               ★ {p.google_rating.toFixed(1)}
-              {p.google_reviews_count ? ` (${p.google_reviews_count} opinii)` : ""}
+              {p.google_reviews_count ? ` (${p.google_reviews_count} z Google)` : ""}
             </span>
-          )}
+          ) : null}
         </div>
 
         <h1 className="text-3xl font-bold sm:text-4xl">{name}</h1>
@@ -220,6 +253,46 @@ export default async function WykonawcaProfilePage({
             </a>
           </section>
         )}
+
+        {/* Opinie */}
+        <section className="mt-10">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-chrom">
+            Opinie{reviewsCount ? ` (${reviewsCount})` : ""}
+          </h2>
+          {reviewsCount === 0 ? (
+            <p className="text-sm text-brand-chrom">
+              Ten wykonawca nie ma jeszcze opinii. Możesz być pierwszy.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {reviews.map((r) => (
+                <div
+                  key={r.id}
+                  className="rounded-2xl border border-brand-border bg-brand-grafit-light p-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold">{r.author_name}</span>
+                    <span className="text-brand-lime" aria-label={`${r.rating} z 5`}>
+                      {"★".repeat(r.rating)}
+                      <span className="text-brand-border">
+                        {"★".repeat(5 - r.rating)}
+                      </span>
+                    </span>
+                  </div>
+                  {r.comment && (
+                    <p className="mt-2 whitespace-pre-line text-sm leading-relaxed">
+                      {r.comment}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs text-brand-chrom">
+                    {new Date(r.created_at).toLocaleDateString("pl-PL")}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          <ReviewForm studioId={p.id} />
+        </section>
 
         <section className="mt-10 rounded-2xl bg-brand-lime p-6 text-brand-grafit">
           <h2 className="text-xl font-bold">
