@@ -86,9 +86,13 @@ export type CreateStudioInput = {
   business_name: string;
   address?: string;
   instagram?: string;
+  instagram_url?: string;
   phone?: string;
   nip?: string;
   specializations?: string;
+  provider_type?: "studio" | "freelancer";
+  years_experience?: number;
+  service_radius_km?: number;
 };
 
 export type CreateStudioResult = {
@@ -197,10 +201,14 @@ export async function createStudio(
       id: userId,
       business_name: businessName,
       address: input.address?.trim() || null,
-      instagram: input.instagram?.replace("@", "").trim() || null,
+      instagram: (input.instagram || input.instagram_url)?.replace("@", "").trim() || null,
+      instagram_url: input.instagram_url?.trim() || null,
       nip: input.nip?.trim() || null,
       specializations,
       status: "active",
+      provider_type: input.provider_type ?? "studio",
+      years_experience: input.years_experience ?? null,
+      service_radius_km: input.service_radius_km ?? null,
     },
     { onConflict: "id" }
   );

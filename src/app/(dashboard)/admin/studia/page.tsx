@@ -40,6 +40,7 @@ export default async function StudiaPage({
       rejection_reason,
       created_at,
       deleted_at,
+      provider_type,
       profile:profiles!studios_id_fkey(email, full_name, phone)
     `)
     .order("created_at", { ascending: false });
@@ -147,6 +148,11 @@ export default async function StudiaPage({
                       {studio.verified_at && (
                         <span className="text-xs px-2 py-1 rounded-full font-medium bg-teal-400/15 text-teal-400">
                           ✓ Zweryfikowane
+                        </span>
+                      )}
+                      {studio.provider_type === "freelancer" && (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-400/15 text-purple-400">
+                          🚗 Wrapper
                         </span>
                       )}
                       {studio.deleted_at && (
