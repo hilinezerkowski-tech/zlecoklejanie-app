@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { AddStudioForm } from "./add-studio-form";
 import { StudioActions } from "./studio-actions";
@@ -132,9 +133,12 @@ export default async function StudiaPage({
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="font-semibold">
+                      <Link
+                        href={`/admin/studia/${studio.id}`}
+                        className="font-semibold text-brand-text hover:text-brand-lime transition-colors"
+                      >
                         {studio.business_name || "Bez nazwy"}
-                      </h3>
+                      </Link>
                       <span
                         className={`text-xs px-2 py-1 rounded-full font-medium ${st.color}`}
                       >
