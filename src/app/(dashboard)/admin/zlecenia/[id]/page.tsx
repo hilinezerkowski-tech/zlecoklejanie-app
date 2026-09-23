@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { signedPhotoUrls } from "@/lib/order-photos";
+import { PhotoUploader } from "@/components/ui/photo-uploader";
+import { PhotoRemoveButton } from "@/components/ui/photo-remove-button";
 import { notFound } from "next/navigation";
 import { AssignStudioForm } from "./assign-form";
 import { OutcomeButtons } from "./outcome-buttons";
@@ -360,23 +362,27 @@ export default async function OrderDetailPage({
       </div>
 
       {/* Zdjęcia zgłoszenia */}
-      {photoUrls.length > 0 && (
-        <div className="mt-6 bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
-          <h2 className="font-semibold mb-4">Zdjęcia zgłoszenia ({photoUrls.length})</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="mt-6 bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
+        <h2 className="font-semibold mb-4">Zdjęcia zgłoszenia ({photoUrls.length})</h2>
+        {photoUrls.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             {photoUrls.map((src, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <a key={i} href={src} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={src}
-                  alt={`Zdjęcie ${i + 1}`}
-                  className="rounded-xl border border-brand-border object-cover w-full h-32"
-                />
-              </a>
+              <div key={i} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <a href={src} target="_blank" rel="noopener noreferrer">
+                  <img
+                    src={src}
+                    alt={`Zdjęcie ${i + 1}`}
+                    className="rounded-xl border border-brand-border object-cover w-full h-32"
+                  />
+                </a>
+                <PhotoRemoveButton orderId={order.id} path={orderPhotos[i]} />
+              </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+        <PhotoUploader orderId={order.id} remaining={6 - photoUrls.length} />
+      </div>
 
       {/* Przypisane studia */}
       <div className="mt-6 bg-brand-grafit-light border border-brand-border rounded-2xl p-6">

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { signedPhotoUrls } from "@/lib/order-photos";
+import { PhotoUploader } from "@/components/ui/photo-uploader";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChooseQuoteButton } from "./choose-quote-button";
@@ -235,6 +236,14 @@ export default async function ClientOrderDetailPage({
               className="rounded-xl border border-brand-border object-cover w-full h-32"
             />
           ))}
+        </div>
+      )}
+      {!decided && (
+        <div className="mb-8">
+          <p className="text-sm text-brand-chrom mb-2">
+            Dodaj zdjęcia auta — pomogą studiom w dokładniejszej wycenie.
+          </p>
+          <PhotoUploader orderId={order.id} remaining={6 - photoUrls.length} />
         </div>
       )}
 

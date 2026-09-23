@@ -37,7 +37,7 @@ export async function sendAssignedEmail(
 ): Promise<AssignedEmailOutcome> {
   const { data: order } = await admin
     .from("orders")
-    .select("id, car_brand, car_model, city")
+    .select("id, car_brand, car_model, city, photos")
     .eq("id", orderId)
     .single();
   if (!order) return { ok: false, error: "Nie znaleziono zlecenia." };
@@ -66,6 +66,7 @@ export async function sendAssignedEmail(
   // Null-safe: zlecenia bez danych auta (np. sama grafika) nie mogą dawać "null null — Warszawa"
   const carPart = [order.car_brand, order.car_model].filter(Boolean).join(" ");
   const orderLabel = carPart ? `${carPart} — ${order.city}` : `${order.city}`;
+  const photoCount = Array.isArray(order.photos) ? order.photos.length : 0;
 
   const result = await sendEmailResult(
     studioProfile.email,
@@ -74,7 +75,8 @@ export async function sendAssignedEmail(
       "Masz nowe zlecenie do wyceny",
       `<p>Czesc ${studio?.business_name ?? ""},</p>
        <p>Klient szuka wykonawcy: <strong>${orderLabel}</strong>.</p>
-       <p>Zaloguj sie i wyslij wycene — maksymalnie 3 studia dostaja to zapytanie, wiec masz realna szanse.</p>`,
+       <p>Zaloguj sie i wyslij wycene — maksymalnie 3 studia dostaja to zapytanie, wiec masz realna szanse.</p>
+       ${photoCount > 0 ? `<p><strong>Zalaczniki:</strong> ${photoCount} ${photoCount === 1 ? "zdjecie" : "zdjec"} — zobacz w panelu.</p>` : ""}`,
       `${APP_URL}/studio/zlecenia/${order.id}`,
       "Zobacz zlecenie i wycen"
     ),
