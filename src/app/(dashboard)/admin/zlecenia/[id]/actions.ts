@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendAssignedEmail } from "@/lib/notify-assigned";
 import { etykietaZlecenia, sendDesignerBrief } from "@/lib/designer-brief";
+import { isValidEmail } from "@/lib/email";
 
 type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -362,4 +363,169 @@ export async function unassignDesigner(
 
   revalidateOrder(orderId);
   return { ok: true, message: "Przypisanie grafika usunięte." };
+}
+
+// =========================================================
+// FAZA A3 — edycja danych zlecenia i kontaktu klienta (tylko admin)
+// =========================================================
+
+const ORDER_SERVICES = ["oklejanie", "ppf", "branding", "grafika", "inne"] as const;
+const ORDER_SCOPES = ["full", "full_wneki", "partial", "front"] as const;
+
+export type UpdateOrderInput = {
+  service_type: string;
+  scope: string | null;
+  city: string;
+  car_brand: string;
+  car_model: string;
+  car_year: string;
+  description: string;
+  estimated_min: string;
+  estimated_max: string;
+};
+
+/** "" -> null, liczba całkowita >= 0 albo błąd. */
+function parseIntField(
+  v: string,
+  label: string
+): { ok: true; value: number | null } | { ok: false; error: string } {
+  const t = (v ?? "").trim();
+  if (!t) return { ok: true, value: null };
+  if (!/^\d+$/.test(t)) return { ok: false, error: `${label}: podaj liczbę całkowitą.` };
+  return { ok: true, value: parseInt(t, 10) };
+}
+
+/**
+ * Edycja danych zlecenia przez admina: usługa, zakres, miasto/kod, pojazd,
+ * opis, szacunek klienta. Nie rusza statusu, dat, klienta ani przypisań.
+ * Studia i klient widzą zmianę od razu (czytają te same wiersze).
+ */
+export async function updateOrderDetails(
+  orderId: string,
+  input: UpdateOrderInput
+): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  if (!(ORDER_SERVICES as readonly string[]).includes(input.service_type)) {
+    return { ok: false, error: "Nieznana usługa." };
+  }
+  const scope = input.scope ? input.scope : null;
+  if (scope && !(ORDER_SCOPES as readonly string[]).includes(scope)) {
+    return { ok: false, error: "Nieznany zakres." };
+  }
+  const city = (input.city ?? "").trim();
+  if (!city) return { ok: false, error: "Miasto jest wymagane." };
+
+  const year = parseIntField(input.car_year, "Rocznik");
+  if (!year.ok) return year;
+  const maxYear = new Date().getFullYear() + 1;
+  if (year.value !== null && (year.value < 1950 || year.value > maxYear)) {
+    return { ok: false, error: `Rocznik poza zakresem 1950–${maxYear}.` };
+  }
+  const min = parseIntField(input.estimated_min, "Szacunek od");
+  if (!min.ok) return min;
+  const max = parseIntField(input.estimated_max, "Szacunek do");
+  if (!max.ok) return max;
+  if (min.value !== null && max.value !== null && max.value < min.value) {
+    return { ok: false, error: "Szacunek „do” nie może być mniejszy niż „od”." };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("orders")
+    .update({
+      service_type: input.service_type,
+      scope,
+      city,
+      car_brand: input.car_brand.trim() || null,
+      car_model: input.car_model.trim() || null,
+      car_year: year.value,
+      description: input.description.trim() || null,
+      estimated_min: min.value,
+      estimated_max: max.value,
+    })
+    .eq("id", orderId);
+  if (error) return { ok: false, error: `Błąd zapisu: ${error.message}` };
+
+  revalidateOrder(orderId);
+  return { ok: true, message: "Zapisano zmiany w zleceniu." };
+}
+
+export type UpdateOrderClientInput = {
+  email: string;
+  full_name: string;
+  phone: string;
+};
+
+/**
+ * Edycja kontaktu klienta zlecenia (profil klienta: e-mail, imię, telefon).
+ *
+ * - Działa na KONCIE klienta — zmiana dotyczy wszystkich jego zleceń.
+ * - E-mail zmieniany najpierw w Supabase Auth (na ten adres klient loguje się
+ *   magic-linkiem), potem w profiles — jak w updateStudio.
+ * - Bezpiecznik: tylko profile z rolą "client". Zlecenie testowe założone
+ *   np. na konto admina/studia nie może zmienić jego adresu logowania.
+ */
+export async function updateOrderClient(
+  orderId: string,
+  input: UpdateOrderClientInput
+): Promise<ActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  const email = (input.email ?? "").trim().toLowerCase();
+  if (!isValidEmail(email)) return { ok: false, error: "Niepoprawny adres e-mail." };
+
+  const admin = createAdminClient();
+  const { data: order } = await admin
+    .from("orders")
+    .select("client_id")
+    .eq("id", orderId)
+    .single();
+  if (!order?.client_id) return { ok: false, error: "Zlecenie nie ma przypisanego klienta." };
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("id, role, email")
+    .eq("id", order.client_id)
+    .maybeSingle();
+  if (!profile) return { ok: false, error: "Nie znaleziono profilu klienta." };
+  if (profile.role !== "client") {
+    return {
+      ok: false,
+      error: `To zlecenie jest na koncie z rolą „${profile.role}”, nie klienta — edycja zablokowana, żeby nie zmienić komuś logowania.`,
+    };
+  }
+
+  if (email !== (profile.email || "").toLowerCase()) {
+    const { data: taken } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("email", email)
+      .neq("id", profile.id)
+      .maybeSingle();
+    if (taken) return { ok: false, error: "Ten e-mail jest już przypisany do innego konta." };
+
+    const { error: authErr } = await admin.auth.admin.updateUserById(profile.id, {
+      email,
+      email_confirm: true,
+    });
+    if (authErr) {
+      return { ok: false, error: `Nie udało się zmienić e-maila logowania: ${authErr.message}` };
+    }
+  }
+
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      email,
+      full_name: input.full_name.trim() || null,
+      phone: input.phone.trim() || null,
+    })
+    .eq("id", profile.id);
+  if (error) return { ok: false, error: `Błąd zapisu kontaktu: ${error.message}` };
+
+  revalidateOrder(orderId);
+  return { ok: true, message: "Zapisano dane klienta." };
 }

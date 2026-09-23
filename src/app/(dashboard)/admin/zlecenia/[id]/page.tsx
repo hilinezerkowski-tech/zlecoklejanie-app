@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AssignStudioForm } from "./assign-form";
 import { OutcomeButtons } from "./outcome-buttons";
 import { AssignmentActions } from "./assignment-actions";
+import { OrderDetailsEditor, ClientEditor } from "./order-edit";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 import { sortujWgOdleglosci } from "@/lib/geo";
 import { domyslnyBrief } from "@/lib/designer-brief";
@@ -244,7 +245,23 @@ export default async function OrderDetailPage({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Dane zlecenia */}
         <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
-          <h2 className="font-semibold mb-4">Dane zlecenia</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold">Dane zlecenia</h2>
+            <OrderDetailsEditor
+              order={{
+                id: order.id,
+                service_type: order.service_type,
+                scope: order.scope,
+                city: order.city,
+                car_brand: order.car_brand,
+                car_model: order.car_model,
+                car_year: order.car_year,
+                description: order.description,
+                estimated_min: order.estimated_min,
+                estimated_max: order.estimated_max,
+              }}
+            />
+          </div>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-brand-chrom">Usługa</dt>
@@ -301,7 +318,21 @@ export default async function OrderDetailPage({
 
         {/* Dane klienta */}
         <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6">
-          <h2 className="font-semibold mb-4">Klient</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold">Klient</h2>
+            <ClientEditor
+              orderId={order.id}
+              client={
+                order.client
+                  ? {
+                      email: order.client.email ?? null,
+                      full_name: order.client.full_name ?? null,
+                      phone: order.client.phone ?? null,
+                    }
+                  : null
+              }
+            />
+          </div>
           <dl className="space-y-3 text-sm">
             {order.client?.full_name && (
               <div className="flex justify-between">
