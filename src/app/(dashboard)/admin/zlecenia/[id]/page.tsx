@@ -100,6 +100,7 @@ export default async function OrderDetailPage({
     // UWAGA: tabela studios nie ma kolumny `city` — miasto parsuje geo.ts z `address`.
     .select("id, business_name, address, specializations")
     .eq("status", "active")
+    .eq("is_paused", false)
     .is("deleted_at", null);
 
   const assignedStudioIds = (assignments || []).map(

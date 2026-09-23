@@ -15,6 +15,7 @@ export default async function StudioProfilPage() {
       `
       id,
       business_name,
+      is_paused,
       description,
       specializations,
       foil_brands,

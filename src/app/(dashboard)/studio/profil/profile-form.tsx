@@ -14,6 +14,7 @@ type StudioProfile = {
   website: string | null;
   address: string | null;
   service_radius_km: number | null;
+  is_paused: boolean | null;
 };
 
 // Tablica <-> tekst rozdzielany przecinkami (dla pól specializations / foil_brands)
@@ -31,6 +32,7 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  const [paused, setPaused] = useState(studio.is_paused ?? false);
   const [form, setForm] = useState({
     business_name: studio.business_name || "",
     description: studio.description || "",
@@ -65,6 +67,7 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
         website: form.website.trim() || null,
         address: form.address.trim() || null,
         service_radius_km: Number.isFinite(radius) ? radius : 50,
+        is_paused: paused,
       })
       .eq("id", studio.id)
       .select();
@@ -187,6 +190,25 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
             className={inputCls}
           />
         </div>
+      </div>
+
+      <div className="rounded-xl border border-brand-border bg-brand-grafit p-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={paused}
+            onChange={(e) => setPaused(e.target.checked)}
+            className="mt-1"
+          />
+          <span className="text-sm">
+            <strong>Wstrzymaj otrzymywanie zleceń</strong>
+            <br />
+            <span className="text-brand-chrom">
+              Gdy zaznaczone, nie będziesz dostawać nowych zapytań (np. na urlopie).
+              Zapisz zmiany, żeby zadziałało.
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="flex items-center gap-4 pt-2">
