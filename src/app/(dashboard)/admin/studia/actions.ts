@@ -32,7 +32,8 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 async function sendStudioWelcome(
   admin: AdminClient,
   email: string,
-  businessName: string
+  businessName: string,
+  providerType: string = "studio"
 ): Promise<boolean> {
   let loginUrl = `${APP_URL}/login`;
 
@@ -56,13 +57,11 @@ async function sendStudioWelcome(
   }
 
   const name = escapeHtml(businessName);
+  const isFreelancer = providerType === "freelancer";
 
-  return sendEmail(
-    email,
-    "Twoje konto na ZlecOklejanie.pl jest gotowe",
-    emailLayout({
-      title: "Konto studia aktywne",
-      body: `<p>Cześć,</p>
+  const subject = "Twoje konto na ZlecOklejanie.pl jest gotowe";
+
+  const studioBody = `<p>Cześć,</p>
         <p>Konto dla <strong>${name}</strong> jest już aktywne. Kliknij poniżej — wejdziesz prosto do panelu, bez hasła.</p>
         <p><strong>Zacznij od trzech rzeczy:</strong></p>
         <ul style="padding-left:18px;margin:8px 0;">
@@ -70,14 +69,32 @@ async function sendStudioWelcome(
           <li><strong>Ustaw promień działania</strong> — dzięki temu dostajesz tylko zapytania z zasięgu.</li>
           <li><strong>Sprawdzaj zakładkę Zlecenia</strong> — powiadomienie o nowym zapytaniu przychodzi mailem.</li>
         </ul>
-        <p>Przypominam zasady: <strong>zero opłat</strong> za dostęp i za kontakt, a każde zlecenie trafia do <strong>maksymalnie 3 studiów</strong>. Wyceniasz tylko to, co Ci pasuje.</p>`,
+        <p>Przypominam zasady: <strong>zero opłat</strong> za dostęp i za kontakt, a każde zlecenie trafia do <strong>maksymalnie 3 studiów</strong>. Wyceniasz tylko to, co Ci pasuje.</p>`;
+
+  const freelancerBody = `<p>Hej ${name},</p>
+        <p>Konto aktywne — możesz zaczynać. Kliknij poniżej, wejdziesz do panelu bez wpisywania hasła.</p>
+        <p><strong>Kilka rzeczy na start:</strong></p>
+        <ul style="padding-left:18px;margin:8px 0;">
+          <li><strong>Uzupełnij profil</strong> — opis, specjalizacje, marki folii, które znasz, i oczywiście link do IG. Klienci porównują i to Twoje IG robi robotę.</li>
+          <li><strong>Podaj zasięg</strong> — gdzie dojeżdżasz? Dzięki temu dostaniesz tylko zapytania, które mają sens geograficznie.</li>
+          <li><strong>Pilnuj zakładki Zlecenia</strong> — jak coś wpłynie, dostaniesz maila.</li>
+        </ul>
+        <p>Zasady: <strong>zero opłat</strong> za konto i kontakt z klientem, każde zlecenie idzie do <strong>max 3 wykonawców</strong>. Wyceniasz tylko to, na co masz ochotę i czas.</p>
+        <p>Jak masz pytania — odpisz na tego maila, trafia prosto do mnie.</p>`;
+
+  return sendEmail(
+    email,
+    subject,
+    emailLayout({
+      title: isFreelancer ? "Konto aktywne — witaj w ZlecOklejanie!" : "Konto studia aktywne",
+      body: isFreelancer ? freelancerBody : studioBody,
       ctaUrl: loginUrl,
       ctaLabel: "Wejdź do panelu",
       footer:
         "Link logowania jest jednorazowy i wygasa po godzinie. Jeśli przestanie działać — wejdź na " +
         `${APP_URL}/login, podaj ten adres e-mail, a wyślemy nowy. Masz pytania? Odpisz na tę wiadomość.`,
     }),
-    { log: { event: "studio_welcome", recipientRole: "studio" } }
+    { log: { event: "studio_welcome", recipientRole: isFreelancer ? "freelancer" : "studio" } }
   );
 }
 
@@ -219,7 +236,7 @@ export async function createStudio(
 
   // 5. Mail powitalny z linkiem logowania. Nie blokuje sukcesu operacji —
   //    jeśli wysyłka padnie, admin zobaczy to w komunikacie i zadzwoni.
-  const welcomeSent = await sendStudioWelcome(admin, email, businessName);
+  const welcomeSent = await sendStudioWelcome(admin, email, businessName, input.provider_type ?? "studio");
 
   revalidatePath("/admin/studia");
   return {
