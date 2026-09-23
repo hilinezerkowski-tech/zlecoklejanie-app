@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createPublicClient } from "@/lib/supabase/public";
 import { cityFromAddress, citySlug } from "@/lib/studio-location";
 import type { StudioCardData } from "@/components/ui/studio-card";
 
@@ -10,7 +10,7 @@ export type CatalogStudio = StudioCardData & {
 
 // Pobiera aktywne studia + agregat ocen z opinii (published).
 export async function getCatalogStudios(): Promise<CatalogStudio[]> {
-  const supabase = await createClient();
+  const supabase = createPublicClient();
 
   const { data: studios } = await supabase
     .from("studios")
