@@ -40,6 +40,7 @@ const kindLabels: Record<string, string> = {
   zlecenie: "klient szuka wykonawcy",
   studio: "studio chce dolaczyc",
   grafik: "grafik chce dolaczyc",
+  "wykonawca-freelancer": "wrapper mobilny chce dolaczyc",
 };
 
 const fieldLabels: Record<string, string> = {
@@ -104,6 +105,21 @@ function autoReply(kind: string, name: string) {
       ctaLabel: "Zobacz, jak to działa",
       footer:
         "Ten e-mail wysłano automatycznie po wypełnieniu formularza na zlecoklejanie.pl. Jeśli to nie Ty — zignoruj tę wiadomość.",
+    };
+  }
+
+  if (kind === "wykonawca-freelancer") {
+    return {
+      subject: "Zgloszenie przyjete - ZlecOklejanie.pl",
+      title: "Mamy Twoje zgloszenie",
+      body: `<p>${hello}</p>
+        <p>Dziekujemy za zgloszenie! Sprawdzimy Twoj profil na IG i odezwiemy sie w ciagu 24 godzin.</p>
+        <p>Dzialasz mobilnie - to u nas rzadkosc i klienci czesto o to pytaja. Jak wszystko sie zgadza, aktywujemy konto szybko.</p>
+        <p>Jesli chcesz dorzucic przykladowe realizacje - odpisz na tego maila, trafi prosto do nas.</p>`,
+      ctaUrl: SITE_URL,
+      ctaLabel: "Zobacz, jak to dziala",
+      footer:
+        "Ten e-mail wyslano automatycznie po wypelnieniu formularza na zlecoklejanie.pl. Jesli to nie Ty - zignoruj te wiadomosc.",
     };
   }
 
@@ -210,7 +226,9 @@ export async function POST(req: NextRequest) {
       ${autoNote}<table style="font-size:14px;line-height:1.5;border-collapse:collapse;">${rows}</table>`,
     ctaUrl: auto.done
       ? `${APP_URL}/admin/${auto.kind === "grafik" ? "graficy" : "studia"}?status=pending`
-      : `${APP_URL}/admin/leady?status=new`,
+      : lead.kind === "wykonawca-freelancer"
+        ? `${APP_URL}/admin/leady-freelancer`
+        : `${APP_URL}/admin/leady?status=new`,
     ctaLabel: auto.done ? "Sprawdz portfolio i aktywuj" : "Otworz skrzynke leadow",
     footer:
       "Lead klienta zamienisz na zlecenie jednym kliknieciem w panelu. Zglaszajacy dostal juz automatyczne potwierdzenie.",
