@@ -70,9 +70,17 @@ export default async function ZleceniaPage({
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold">Zlecenia</h1>
-        <span className="text-sm text-brand-chrom">
-          {orders?.length || 0} zleceń
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-brand-chrom">
+            {orders?.length || 0} zleceń
+          </span>
+          <Link
+            href="/admin/zlecenia/new"
+            className="px-4 py-2 rounded-xl text-sm font-semibold bg-brand-lime text-brand-bg hover:bg-brand-lime/90 transition-colors"
+          >
+            + Nowe zlecenie
+          </Link>
+        </div>
       </div>
 
       {/* Filtry statusów */}

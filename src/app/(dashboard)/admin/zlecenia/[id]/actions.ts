@@ -617,3 +617,100 @@ export async function undoOrderOutcome(orderId: string): Promise<ActionResult> {
   revalidateOrder(orderId);
   return { ok: true, message: "Cofnięto wynik." };
 }
+
+// ─── A5: Ręczne tworzenie zlecenia przez admina ───────────────────────────────
+
+export type CreateOrderInput = {
+  email: string;
+  full_name: string;
+  phone: string;
+  service_type: string;
+  scope: string;
+  city: string;
+  car_brand: string;
+  car_model: string;
+  car_year: string;
+  description: string;
+  estimated_min: string;
+  estimated_max: string;
+};
+
+export async function createOrderAsAdmin(
+  input: CreateOrderInput
+): Promise<ActionResult & { orderId?: string }> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+
+  const admin = createAdminClient();
+
+  const email = input.email.trim().toLowerCase();
+  if (!isValidEmail(email)) return { ok: false, error: "Podaj prawidłowy e-mail klienta." };
+  if (!input.city.trim()) return { ok: false, error: "Miasto jest wymagane." };
+  if (!input.service_type) return { ok: false, error: "Rodzaj usługi jest wymagany." };
+
+  // Znajdź lub utwórz profil klienta
+  const { data: existing } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  let clientId: string;
+
+  if (existing) {
+    clientId = existing.id;
+  } else {
+    const { data: newUser, error: authErr } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: {
+        full_name: input.full_name || null,
+        phone: input.phone || null,
+      },
+    });
+    if (authErr || !newUser.user) {
+      return { ok: false, error: `Nie udało się utworzyć konta: ${authErr?.message}` };
+    }
+    await admin.from("profiles").upsert(
+      {
+        id: newUser.user.id,
+        email,
+        full_name: input.full_name || null,
+        phone: input.phone || null,
+        role: "client",
+      },
+      { onConflict: "id" }
+    );
+    clientId = newUser.user.id;
+  }
+
+  const carYear = parseInt(input.car_year, 10);
+  const estimMin = parseInt(input.estimated_min, 10);
+  const estimMax = parseInt(input.estimated_max, 10);
+
+  const { data: order, error: orderErr } = await admin
+    .from("orders")
+    .insert({
+      client_id: clientId,
+      service_type: input.service_type,
+      scope: input.scope || "full",
+      city: input.city.trim(),
+      car_brand: input.car_brand || null,
+      car_model: input.car_model || null,
+      car_year: isNaN(carYear) ? null : carYear,
+      description: input.description || null,
+      estimated_min: isNaN(estimMin) ? null : estimMin,
+      estimated_max: isNaN(estimMax) ? null : estimMax,
+      status: "new",
+      photos: [],
+    })
+    .select("id")
+    .single();
+
+  if (orderErr || !order) {
+    return { ok: false, error: `Błąd zapisu: ${orderErr?.message}` };
+  }
+
+  revalidatePath("/admin/zlecenia");
+  return { ok: true, orderId: order.id };
+}
