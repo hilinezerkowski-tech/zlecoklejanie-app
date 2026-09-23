@@ -94,7 +94,7 @@ async function sendStudioWelcome(
         "Link logowania jest jednorazowy i wygasa po godzinie. Jeśli przestanie działać — wejdź na " +
         `${APP_URL}/login, podaj ten adres e-mail, a wyślemy nowy. Masz pytania? Odpisz na tę wiadomość.`,
     }),
-    { log: { event: "studio_welcome", recipientRole: isFreelancer ? "freelancer" : "studio" } }
+    { log: { event: isFreelancer ? "freelancer_welcome" : "studio_welcome", recipientRole: "studio" } }
   );
 }
 

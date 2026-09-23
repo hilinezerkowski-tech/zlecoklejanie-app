@@ -87,7 +87,7 @@ export async function getStudioDetail(studioId: string) {
     .order("created_at", { ascending: false })
     .limit(20);
 
-  const email = (studio.profile as { email: string } | null)?.email;
+  const email = (studio.profile as unknown as { email: string } | null)?.email;
   let emailLog: {
     event: string;
     subject: string;

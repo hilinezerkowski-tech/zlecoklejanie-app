@@ -2,7 +2,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { redirect } from "next/navigation";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -16,15 +15,14 @@ async function requireAdmin() {
 function csvEscape(val: unknown): string {
   if (val === null || val === undefined) return "";
   const s = String(val);
-  if (s.includes(",") || s.includes(""") || s.includes("
-")) {
-    return """+s.replace(/"/g, """") + """;
+  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+    return '"' + s.replace(/"/g, '""') + '"';
   }
   return s;
 }
 
 function toRow(row: Record<string, unknown>, keys: string[]): string {
-  return keys.map(k => csvEscape(row[k])).join(",");
+  return keys.map((k) => csvEscape(row[k])).join(",");
 }
 
 export const dynamic = "force-dynamic";
@@ -52,38 +50,39 @@ export async function GET() {
   const headers = [
     "id", "service_type", "scope", "city", "car_brand", "car_model", "car_year",
     "status", "notes", "created_at",
-    "client_email", "client_name", "client_phone"
+    "client_email", "client_name", "client_phone",
   ];
 
   const rows = (orders ?? []).map((o: Record<string, unknown>) => {
     const profile = o.profile as Record<string, unknown> | null;
-    return toRow({
-      id: o.id,
-      service_type: o.service_type,
-      scope: o.scope,
-      city: o.city,
-      car_brand: o.car_brand,
-      car_model: o.car_model,
-      car_year: o.car_year,
-      status: o.status,
-      notes: o.notes,
-      created_at: o.created_at,
-      client_email: profile?.email ?? "",
-      client_name: profile?.full_name ?? "",
-      client_phone: profile?.phone ?? "",
-    }, headers);
+    return toRow(
+      {
+        id: o.id,
+        service_type: o.service_type,
+        scope: o.scope,
+        city: o.city,
+        car_brand: o.car_brand,
+        car_model: o.car_model,
+        car_year: o.car_year,
+        status: o.status,
+        notes: o.notes,
+        created_at: o.created_at,
+        client_email: profile?.email ?? "",
+        client_name: profile?.full_name ?? "",
+        client_phone: profile?.phone ?? "",
+      },
+      headers
+    );
   });
 
   const bom = "﻿";
-  const csv = bom + headers.join(",") + "
-" + rows.join("
-");
+  const csv = bom + headers.join(",") + "\n" + rows.join("\n");
 
   return new NextResponse(csv, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": "attachment; filename="zlecenia-eksport.csv"",
+      "Content-Disposition": 'attachment; filename="zlecenia-eksport.csv"',
     },
   });
 }

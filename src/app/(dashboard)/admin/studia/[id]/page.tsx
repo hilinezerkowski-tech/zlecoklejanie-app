@@ -80,7 +80,7 @@ export default async function StudioDetailPage({
   if (!detail) notFound();
 
   const { studio, assignments, quotes, emailLog } = detail;
-  const profile = studio.profile as {
+  const profile = studio.profile as unknown as {
     id: string;
     email: string;
     full_name: string | null;
@@ -260,7 +260,7 @@ export default async function StudioDetailPage({
           <p className="text-sm text-brand-chrom">Brak przypisanych zleceń.</p>
         ) : (
           <div className="divide-y divide-brand-border">
-            {assignments.map((a: {
+            {(assignments as unknown as Array<{
               id: string;
               status: string;
               assigned_at: string | null;
@@ -275,7 +275,7 @@ export default async function StudioDetailPage({
                 status: string;
                 created_at: string;
               } | null;
-            }) => {
+            }>).map((a) => {
               const ord = a.order;
               if (!ord) return null;
               const oSt = orderStatusMeta[ord.status] ?? { label: ord.status, cls: "bg-white/10 text-brand-chrom" };
@@ -320,7 +320,7 @@ export default async function StudioDetailPage({
           <p className="text-sm text-brand-chrom">Brak wycen.</p>
         ) : (
           <div className="divide-y divide-brand-border">
-            {quotes.map((q: {
+            {(quotes as unknown as Array<{
               id: string;
               price_min: number;
               price_max: number | null;
@@ -335,7 +335,7 @@ export default async function StudioDetailPage({
                 car_model: string | null;
                 service_type: string;
               } | null;
-            }) => {
+            }>).map((q) => {
               const ord = q.order;
               return (
                 <div key={q.id} className="py-3">
