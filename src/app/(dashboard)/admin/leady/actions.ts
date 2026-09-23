@@ -148,6 +148,9 @@ export async function convertLeadToOrder(leadId: string): Promise<LeadActionResu
       // Sygnal z formularza: klient chce, zebysmy dobrali grafika (migracja 014).
       // Trzymamy go w kolumnie, nie tylko w opisie — panel po tym filtruje.
       needs_designer: Boolean(p.potrzebuje_grafika),
+      photos: Array.isArray((p as Record<string, unknown>).photos)
+        ? ((p as Record<string, unknown>).photos as string[])
+        : [],
       description: descParts.join("\n\n") || null,
       status: "new",
     })
