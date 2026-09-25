@@ -2,9 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { buildAgentFeed } from "@/lib/agent/feed";
 import AgentDashboard from "./agent-dashboard";
 
 export const metadata = { title: "Agent — ZlecOklejanie.pl" };
+export const dynamic = "force-dynamic";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -17,5 +19,6 @@ async function requireAdmin() {
 
 export default async function AgentPage() {
   await requireAdmin();
-  return <AgentDashboard />;
+  const initialFeed = await buildAgentFeed();
+  return <AgentDashboard initialFeed={initialFeed} />;
 }
