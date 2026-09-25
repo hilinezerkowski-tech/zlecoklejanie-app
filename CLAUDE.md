@@ -2,6 +2,8 @@
 
 Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak pracować w tym repo.
 
+**Jedyna kanoniczna kopia: `D:\zlecoklejanie-app`.** Kopia na `C:\Users\Hyperbook\Desktop\zlecoklejanie-app` została skonsolidowana i usunięta (25.09.2026) — mniej miejsca na C:. Wszystkie pliki (kod, notatki, briefy typu `agent-admin-brief.md`) twórz wyłącznie tutaj, nigdy w innej lokalizacji. Po sklonowaniu na nowo: `npm install` (node_modules/.next celowo nie były przenoszone — regenerowalne).
+
 ## Stack
 
 - Next.js (App Router), Supabase (Auth + Postgres + RLS), Vercel (auto-deploy z `main`).

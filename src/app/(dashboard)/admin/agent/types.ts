@@ -43,4 +43,6 @@ export interface AgentCard {
 export interface AgentFeed {
   generatedAt: string;
   cards: AgentCard[];
+  /** Liczba kart ukrytych przez admina (agent_dismissed) — do przycisku "Pokaż ukryte". */
+  hiddenCount: number;
 }
