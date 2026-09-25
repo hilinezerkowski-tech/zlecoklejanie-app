@@ -6,6 +6,7 @@ import {
   fetchStuckLandingLeadCards,
   fetchRespondedFreelancerCards,
 } from "@/lib/agent/sources/supabase";
+import { enrichWithSuggestions } from "@/lib/agent/suggest";
 
 const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 } as const;
 
@@ -49,7 +50,11 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
     };
   }
 
-  const visible = all.filter((c) => !dismissedIds.has(c.id));
+  // Sugestie z modelu tylko dla widocznych kart — ukryte nie kosztują.
+  const visible = await enrichWithSuggestions(
+    admin,
+    all.filter((c) => !dismissedIds.has(c.id))
+  );
   return {
     generatedAt: new Date().toISOString(),
     cards: sortCards(visible),
