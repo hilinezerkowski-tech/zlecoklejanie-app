@@ -29,8 +29,10 @@ type CachedRow = {
   priority: string | null;
 };
 
+// Do promptu trafiają tytuł, fakty i rodzaje akcji — zmiana któregokolwiek = nowa sugestia.
 function hashFacts(card: AgentCard): string {
-  return createHash("sha256").update(JSON.stringify(card.facts)).digest("hex");
+  const input = { title: card.title, facts: card.facts, kinds: card.actions.map((a) => a.kind) };
+  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
 }
 
 /** Model ma zwrócić goły JSON, ale zdejmujemy ewentualne ``` i tekst wokół. */
