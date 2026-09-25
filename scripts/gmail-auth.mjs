@@ -16,7 +16,15 @@
 // Albo wskaż plik ręcznie:  node scripts/gmail-auth.mjs --json "C:\sciezka\client_secret.json"
 
 import http from "node:http";
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
+
+// Windows: `clip` czyta stdin do schowka; na innych systemach po prostu pomijamy.
+function copyToClipboard(text) {
+  if (process.platform !== "win32") return false;
+  const r = spawnSync("clip", { input: text });
+  return r.status === 0;
+}
 import { join } from "node:path";
 import { auth } from "@googleapis/gmail";
 
@@ -41,9 +49,27 @@ function newestClientSecretInDownloads() {
   }
 }
 
+function readClipboard() {
+  if (process.platform !== "win32") return "";
+  const r = spawnSync("powershell", ["-NoProfile", "-Command", "Get-Clipboard -Raw"], { encoding: "utf8" });
+  return r.status === 0 ? (r.stdout ?? "").trim() : "";
+}
+
 function resolveCredentials() {
   const argIdx = process.argv.indexOf("--json");
   if (argIdx !== -1 && process.argv[argIdx + 1]) return fromJsonFile(process.argv[argIdx + 1]);
+  // Google nie pokazuje istniejącego sekretu; nowy ma przycisk "Kopiuj do schowka".
+  // --client-id <id> --secret-from-clipboard: sekret ze schowka, nigdzie nie wyświetlany.
+  const idIdx = process.argv.indexOf("--client-id");
+  if (idIdx !== -1 && process.argv[idIdx + 1] && process.argv.includes("--secret-from-clipboard")) {
+    const secret = readClipboard();
+    if (!/^GOCSPX-/.test(secret)) {
+      console.error("W schowku nie ma sekretu klienta (oczekiwany ciąg zaczynający się od GOCSPX-). Kliknij „Kopiuj do schowka” w Google Cloud i uruchom ponownie.");
+      process.exit(1);
+    }
+    console.log("Sekret klienta wzięty ze schowka.");
+    return { clientId: process.argv[idIdx + 1], clientSecret: secret };
+  }
   if (process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) {
     return { clientId: process.env.GMAIL_CLIENT_ID, clientSecret: process.env.GMAIL_CLIENT_SECRET };
   }
@@ -92,9 +118,20 @@ const server = http.createServer(async (req, res) => {
       throw new Error("Brak refresh_token w odpowiedzi — cofnij dostęp aplikacji na https://myaccount.google.com/permissions i uruchom ponownie.");
     }
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" }).end("Gotowe — wróć do terminala. Tę kartę możesz zamknąć.");
-    console.log("\nGMAIL_REFRESH_TOKEN (wklej do Vercela, Preview + Production):\n");
-    console.log(tokens.refresh_token);
-    console.log("");
+    const quiet = process.argv.includes("--quiet");
+    const inClipboard = copyToClipboard(tokens.refresh_token);
+    if (quiet) {
+      console.log(
+        inClipboard
+          ? "\nGotowe. GMAIL_REFRESH_TOKEN jest w schowku — w Vercelu: Add Environment Variable → Key: GMAIL_REFRESH_TOKEN → Value: Ctrl+V → Preview + Production → Save."
+          : "\nNie udało się skopiować tokena do schowka — uruchom bez --quiet, żeby go wydrukować."
+      );
+    } else {
+      console.log("\nGMAIL_REFRESH_TOKEN (wklej do Vercela, Preview + Production):\n");
+      console.log(tokens.refresh_token);
+      console.log("");
+      if (inClipboard) console.log("Token jest też w schowku — w Vercelu wystarczy Ctrl+V.");
+    }
   } catch (e) {
     res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" }).end("Błąd wymiany kodu — sprawdź terminal.");
     console.error("Wymiana kodu na token nie powiodła się:", e instanceof Error ? e.message : e);
