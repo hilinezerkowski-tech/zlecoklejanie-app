@@ -18,7 +18,8 @@ const POSTS_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_POSTS_CHECKED = 25;
 const FACT_EXCERPT = 300;
 // Pytania o cenę/lokalizację/dołączenie — reszta ma niższy priorytet.
-const PRICE_OR_JOIN_QUESTION = /\b(ile|cena|koszt|gdzie|jak doł[ąa]czy[ćc])\b/i;
+// Bez \b — w JS nie traktuje polskich liter jako części słowa.
+const PRICE_OR_JOIN_QUESTION = /(?:^|[^a-ząćęłńóśźż])(ile|cen[aęy]|koszt|gdzie|jak doł[ąa]czy)/i;
 
 type Profile = { id: string; groupId: string; platform: "facebook" | "instagram"; label: "Facebook" | "Instagram" };
 
@@ -86,6 +87,13 @@ async function pp<T>(path: string, key: string): Promise<T> {
   }
 }
 
+/** "https://www.instagram.com/nick/?hl=pl" → "nick" */
+function handleFromUrl(url: string | null): string {
+  if (!url) return "";
+  const m = url.match(/instagram\.com\/([^/?#\s]+)/i);
+  return m ? m[1].toLowerCase() : "";
+}
+
 function excerpt(text: string, max = FACT_EXCERPT): string {
   const t = text.trim();
   return t.length > max ? `${t.slice(0, max)}…` : t;
@@ -98,21 +106,23 @@ async function fetchCommentCards(
   profile: Profile,
   myUsername: string | null
 ): Promise<AgentCard[]> {
-  const since = new Date(Date.now() - POSTS_WINDOW_MS).toISOString();
-  const posts = await pp<{ data: PostproxyPost[] }>(
-    `/posts?profile_group_id=${profile.groupId}&status=published&per_page=50&from=${encodeURIComponent(since)}`,
+  // /api/posts nie ma filtra po dacie utworzenia — okno 30 dni liczymy sami.
+  const since = Date.now() - POSTS_WINDOW_MS;
+  const posts = await pp<{ data?: PostproxyPost[] }>(
+    `/posts?profile_group_id=${profile.groupId}&status=published&per_page=50`,
     key
   ).catch(() => ({ data: [] as PostproxyPost[] }));
 
   // Tylko posty faktycznie opublikowane NA TYM profilu (grupa może mieć inne konta).
   const relevant = (posts.data ?? [])
+    .filter((p) => Date.parse(p.created_at) >= since)
     .filter((p) => (p.platforms ?? []).some((pl) => pl.profile_id === profile.id))
     .slice(0, MAX_POSTS_CHECKED);
   if (relevant.length === 0) return [];
 
   const perPost = await Promise.all(
     relevant.map((post) =>
-      pp<{ data: PostproxyComment[] }>(
+      pp<{ data?: PostproxyComment[] }>(
         `/posts/${post.id}/comments?profile_id=${profile.id}&per_page=50`,
         key
       )
@@ -168,39 +178,38 @@ async function fetchChatCards(
   key: string,
   profile: Profile
 ): Promise<AgentCard[]> {
-  const chats = await pp<{ data: PostproxyChat[] }>(
+  const chats = await pp<{ data?: PostproxyChat[] }>(
     `/profiles/${profile.id}/chats?per_page=20`,
     key
   ).catch(() => ({ data: [] as PostproxyChat[] }));
 
-  const unanswered = (chats.data ?? []).filter(
-    (c) => c.last_inbound_at && (!c.last_outbound_at || c.last_inbound_at > c.last_outbound_at)
-  );
+  // Ostatnia wiadomość przychodząca nowsza niż nasza odpowiedź = czeka na nas.
+  const unanswered = (chats.data ?? []).filter((c) => {
+    if (!c.last_inbound_at) return false;
+    if (!c.last_outbound_at) return true;
+    return Date.parse(c.last_inbound_at) > Date.parse(c.last_outbound_at);
+  });
   if (unanswered.length === 0) return [];
 
-  // Dopasowanie handle'a IG/FB do bazy leadów freelancerów — jednym zapytaniem dla wszystkich.
-  const handles = unanswered.map((c) => (c.participant_username || "").toLowerCase()).filter(Boolean);
+  // Dopasowanie handle'a IG do bazy leadów freelancerów. Tabela jest mała —
+  // porównujemy w JS zamiast składać filtr .or() z nazw użytkowników.
   const leadHandles = new Set<string>();
-  if (handles.length > 0) {
-    const { data: leads } = await admin
-      .from("freelancer_leads")
-      .select("handle, instagram_url")
-      .or(handles.map((h) => `handle.ilike.%${h}%,instagram_url.ilike.%${h}%`).join(","));
-    for (const lead of (leads ?? []) as { handle: string | null; instagram_url: string | null }[]) {
-      for (const h of handles) {
-        if (
-          (lead.handle && lead.handle.toLowerCase().includes(h)) ||
-          (lead.instagram_url && lead.instagram_url.toLowerCase().includes(h))
-        ) {
-          leadHandles.add(h);
-        }
-      }
+  if (profile.platform === "instagram") {
+    const { data: leads } = await admin.from("freelancer_leads").select("handle, instagram_url").limit(5000);
+    const known = ((leads ?? []) as { handle: string | null; instagram_url: string | null }[]).flatMap((l) => [
+      (l.handle || "").replace(/^@/, "").toLowerCase(),
+      handleFromUrl(l.instagram_url),
+    ]);
+    const knownSet = new Set(known.filter(Boolean));
+    for (const c of unanswered) {
+      const h = (c.participant_username || "").replace(/^@/, "").toLowerCase();
+      if (h && knownSet.has(h)) leadHandles.add(h);
     }
   }
 
   const withMessages = await Promise.all(
     unanswered.map((chat) =>
-      pp<{ data: PostproxyMessage[] }>(`/chats/${chat.id}/messages?per_page=3`, key)
+      pp<{ data?: PostproxyMessage[] }>(`/chats/${chat.id}/messages?per_page=3`, key)
         .then((r) => ({ chat, messages: r.data ?? [] }))
         .catch(() => ({ chat, messages: [] as PostproxyMessage[] }))
     )
@@ -208,8 +217,8 @@ async function fetchChatCards(
 
   return withMessages.map(({ chat, messages }) => {
     const name = chat.participant_name || chat.participant_username || "nieznany nadawca";
-    const handle = (chat.participant_username || "").toLowerCase();
-    const inBase = handle && leadHandles.has(handle);
+    const handle = (chat.participant_username || "").replace(/^@/, "").toLowerCase();
+    const inBase = Boolean(handle) && leadHandles.has(handle);
     // Wiadomości przychodzą najnowsza→najstarsza — do faktów w kolejności chronologicznej.
     const chrono = [...messages].reverse();
     const lastInbound = messages.find((m) => m.direction === "inbound")?.body || "";
@@ -225,7 +234,7 @@ async function fetchChatCards(
       facts: [
         `Od: ${name}${chat.participant_username ? ` (@${chat.participant_username})` : ""}`,
         ...chrono.map((m) => `${m.direction === "inbound" ? "Oni" : "My"}: „${excerpt(m.body || "(załącznik/brak treści)", 200)}”`),
-        `W bazie leadów freelancerów: ${inBase ? "TAK" : "NIE"}`,
+        ...(profile.platform === "instagram" ? [`W bazie leadów freelancerów: ${inBase ? "TAK" : "NIE"}`] : []),
       ],
       suggestion:
         priority === "normal"
@@ -252,10 +261,10 @@ export async function fetchPostproxyCards(admin: SupabaseClient): Promise<AgentC
 
   const results = await Promise.allSettled(
     PROFILES.map(async (profile) => {
-      const me = await pp<{ data: ProfileInfo[] }>(`/profiles?profile_group_id=${profile.groupId}`, key).catch(
+      const me = await pp<{ data?: ProfileInfo[] }>(`/profiles?profile_group_id=${profile.groupId}`, key).catch(
         () => ({ data: [] as ProfileInfo[] })
       );
-      const myUsername = me.data.find((p) => p.id === profile.id)?.username ?? null;
+      const myUsername = (me.data ?? []).find((p) => p.id === profile.id)?.username ?? null;
 
       const [commentCards, chatCards] = await Promise.all([
         fetchCommentCards(key, profile, myUsername),
