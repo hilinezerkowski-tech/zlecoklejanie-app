@@ -1,9 +1,14 @@
 // Źródło "Facebook/Instagram" dla feedu agenta — Faza 4.
 // Komentarze pod postami z ostatnich 30 dni bez naszej odpowiedzi, i DM-y,
-// których ostatnia wiadomość nie jest od nas. Tylko konta ZlecOklejanie —
-// FB "Wojciech Zer" (mxUdAk) i IG @zlecoklejanie (wZU3pb). NIGDY profile Hiline
-// (mimo że dzielą profile_group AnF0Ll z FB) — filtrujemy zawsze po profile_id.
-// Brak env POSTPROXY_API_KEY → źródło wyłączone (feed działa dalej).
+// których ostatnia wiadomość nie jest od nas. Tylko konta ZlecOklejanie. NIGDY Hiline.
+//
+// Dwa osobne konta Postproxy, dwa klucze:
+// - POSTPROXY_API_KEY (konto "Wizytówka Hiline"): FB "Wojciech Zer" (mxUdAk). Ten profil
+//   publikuje na KILKA stron (ZlecOklejanie, Hiline, Eco Sim) — bierzemy tylko posty,
+//   których link zaczyna się od id strony ZlecOklejanie. DM-ów FB nie bierzemy wcale:
+//   czat nie mówi, której strony dotyczy, a odpowiedź mogłaby pójść jako Hiline.
+// - POSTPROXY_API_KEY_IG (konto portalu): IG @zlecoklejanie (wZU3pb) — komentarze i DM.
+// Brak klucza danego konta → ten profil pominięty (feed działa dalej).
 //
 // REST API Postproxy: https://api.postproxy.dev/api, auth Authorization: Bearer.
 // page/per_page (1-based), odpowiedź { total, page, per_page, data }.
@@ -21,20 +26,53 @@ const FACT_EXCERPT = 300;
 // Bez \b — w JS nie traktuje polskich liter jako części słowa.
 const PRICE_OR_JOIN_QUESTION = /(?:^|[^a-ząćęłńóśźż])(ile|cen[aęy]|koszt|gdzie|jak doł[ąa]czy)/i;
 
-type Profile = { id: string; groupId: string; platform: "facebook" | "instagram"; label: "Facebook" | "Instagram" };
+type Profile = {
+  id: string;
+  groupId: string;
+  platform: "facebook" | "instagram";
+  label: "Facebook" | "Instagram";
+  keyEnv: "POSTPROXY_API_KEY" | "POSTPROXY_API_KEY_IG";
+  /** FB: strona, której posty bierzemy (link posta = facebook.com/<pageId>_<postId>). */
+  pageId?: string;
+  /** Autorzy, których komentarze nie czekają na odpowiedź (nasze konta). */
+  ownAuthors: RegExp;
+};
 
-// Tylko te dwa konta — nigdy Hiline (współdzieli profile_group AnF0Ll z FB).
+const ZLEC_FB_PAGE_ID = "1288058921054739";
+
 const PROFILES: Profile[] = [
-  { id: "mxUdAk", groupId: "AnF0Ll", platform: "facebook", label: "Facebook" },
-  { id: "wZU3pb", groupId: "18F2R7", platform: "instagram", label: "Instagram" },
+  {
+    id: "mxUdAk",
+    groupId: "AnF0Ll",
+    platform: "facebook",
+    label: "Facebook",
+    keyEnv: "POSTPROXY_API_KEY",
+    pageId: ZLEC_FB_PAGE_ID,
+    ownAuthors: /zlecoklejanie|hiline/i,
+  },
+  {
+    id: "wZU3pb",
+    groupId: "18F2R7",
+    platform: "instagram",
+    label: "Instagram",
+    keyEnv: "POSTPROXY_API_KEY_IG",
+    ownAuthors: /^zlecoklejanie|^hiline/i,
+  },
 ];
 
 type PostproxyPost = {
   id: string;
   body: string | null;
   created_at: string;
-  platforms: { platform: string; profile_id: string }[] | null;
+  platforms: { platform: string; profile_id: string; url?: string | null }[] | null;
 };
+
+/** Post opublikowany na TYM profilu i — dla FB — na stronie ZlecOklejanie (nie Hiline). */
+function isOnProfile(post: PostproxyPost, profile: Profile): boolean {
+  return (post.platforms ?? []).some(
+    (pl) => pl.profile_id === profile.id && (!profile.pageId || (pl.url ?? "").includes(`/${profile.pageId}_`))
+  );
+}
 
 type PostproxyComment = {
   id: string;
@@ -68,8 +106,8 @@ type ProfileInfo = { id: string; username: string | null };
 
 let cache: { at: number; cards: AgentCard[] } | null = null;
 
-function apiKey(): string | null {
-  return process.env.POSTPROXY_API_KEY || null;
+function apiKey(profile: Profile): string | null {
+  return process.env[profile.keyEnv] || null;
 }
 
 async function pp<T>(path: string, key: string): Promise<T> {
@@ -116,7 +154,7 @@ async function fetchCommentCards(
   // Tylko posty faktycznie opublikowane NA TYM profilu (grupa może mieć inne konta).
   const relevant = (posts.data ?? [])
     .filter((p) => Date.parse(p.created_at) >= since)
-    .filter((p) => (p.platforms ?? []).some((pl) => pl.profile_id === profile.id))
+    .filter((p) => isOnProfile(p, profile))
     .slice(0, MAX_POSTS_CHECKED);
   if (relevant.length === 0) return [];
 
@@ -136,7 +174,9 @@ async function fetchCommentCards(
     const postLabel = post.body ? excerpt(post.body, 80) : "post bez treści";
     for (const c of comments) {
       const alreadyAnswered = Array.isArray(c.replies) && c.replies.length > 0;
-      const isOwnComment = myUsername && c.author_username && c.author_username.toLowerCase() === myUsername.toLowerCase();
+      const author0 = c.author_username || "";
+      const isOwnComment =
+        (myUsername && author0.toLowerCase() === myUsername.toLowerCase()) || profile.ownAuthors.test(author0);
       if (alreadyAnswered || isOwnComment) continue;
 
       const body = (c.body || "").trim();
@@ -185,6 +225,8 @@ async function fetchChatCards(
   key: string,
   profile: Profile
 ): Promise<AgentCard[]> {
+  // FB: czat nie mówi, której strony dotyczy (profil obsługuje też Hiline) — pomijamy.
+  if (profile.platform === "facebook") return [];
   const chats = await pp<{ data?: PostproxyChat[] }>(
     `/profiles/${profile.id}/chats?per_page=20`,
     key
@@ -263,16 +305,18 @@ async function fetchChatCards(
 // --- wejście ---------------------------------------------------------------------
 
 export async function fetchPostproxyCards(admin: SupabaseClient): Promise<AgentCard[]> {
-  const key = apiKey();
-  if (!key) {
-    console.warn("[agent] POSTPROXY_API_KEY not set — źródło Facebook/Instagram wyłączone");
-    return [];
-  }
+  const active = PROFILES.filter((p) => {
+    if (apiKey(p)) return true;
+    console.warn(`[agent] ${p.keyEnv} not set — źródło ${p.label} wyłączone`);
+    return false;
+  });
+  if (active.length === 0) return [];
 
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.cards;
 
   const results = await Promise.allSettled(
-    PROFILES.map(async (profile) => {
+    active.map(async (profile) => {
+      const key = apiKey(profile)!;
       const me = await pp<{ data?: ProfileInfo[] }>(`/profiles?profile_group_id=${profile.groupId}`, key).catch(
         () => ({ data: [] as ProfileInfo[] })
       );
