@@ -102,12 +102,38 @@ function extractBody(part: gmail_v1.Schema$MessagePart | undefined): string {
   return html ? stripHtml(html) : "";
 }
 
+const QUOTE_HEADER = /^(On .+ wrote:|W dniu .+ napisał(\(a\))?:?|.+ napisał\(a\):)$/;
+const QUOTED_ORIGINAL = /^(-{3,} ?(Original Message|Oryginalna wiadomość) ?-{3,}|From: .+|Od: .+<.+@.+>|_{10,})$/;
+
+/**
+ * Zostawia nową treść wiadomości, bez cytowanej historii — model ma czytać to,
+ * co nadawca napisał teraz. Obsługuje odpowiedź nad cytatem (Gmail, Outlook:
+ * ucinamy od nagłówka cytatu) i pod cytatem (Thunderbird/Roundcube: cytat to
+ * linie z ">", odpowiedź jest niżej i zostaje).
+ */
 function cleanBody(text: string): string {
-  // Ucinamy cytowaną historię wątku i sygnaturę — model ma czytać nową treść.
-  const cut = text.split(
-    /\r?\n(?:>|On .+ wrote:|W dniu .+ napisał|.+ napisał\(a\):|-{3,} ?(?:Original Message|Oryginalna wiadomość) ?-{3,}|From: .+|Od: .+<.+@.+>|________________)/
-  )[0];
-  return cut.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, BODY_LIMIT);
+  const lines = text.replace(/\r/g, "").split("\n");
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (QUOTED_ORIGINAL.test(t)) break;
+    if (t.startsWith(">")) continue;
+    if (QUOTE_HEADER.test(t)) {
+      const next = lines.slice(i + 1).find((l) => l.trim() !== "");
+      if (next?.trim().startsWith(">")) continue;
+      break;
+    }
+    kept.push(lines[i]);
+  }
+  return kept
+    .join("\n")
+    // Stopki antywirusów w stylu Avast: obrazek-śledzik i "Nie zawiera wirusów".
+    .replace(/[[<]?https?:\/\/\S*(?:avast|avcdn)\S*[\]>]?/gi, "")
+    .replace(/Nie zawiera wirusów\.?|Virus-free\.?|www\.avast\.com/gi, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, BODY_LIMIT);
 }
 
 function parseThread(thread: gmail_v1.Schema$Thread): ParsedMessage | null {
