@@ -14,6 +14,10 @@ const FACT_EXCERPT = 500;
 const REQUEST_TIMEOUT_MS = 8000;
 // Automaty i newslettery — nikt nie czeka na odpowiedź.
 const AUTOMATED_SENDER = /no-?reply|mailer-daemon|postmaster|notifications?@|newsletter|bounce/i;
+// Własne maile portalu (powiadomienia@, kontakt@ — kopie wysłanych odpowiedzi
+// wracają przez ImprovMX jako nieprzeczytane) i powiadomienia platform: leady z nich
+// są już w feedzie jako karty z bazy, a "odpowiedź" poszłaby do automatu.
+const SKIPPED_SENDER_DOMAIN = /(^|\.)(zlecoklejanie\.pl|netlify\.com|vercel\.com|supabase\.(io|com)|mailerlite\.com|github\.com|resend\.(com|dev))$/i;
 
 const serviceLabels: Record<string, string> = {
   oklejanie: "oklejanie",
@@ -106,7 +110,8 @@ function parseThread(thread: gmail_v1.Schema$Thread): ParsedMessage | null {
     Boolean(header(headers, "List-Unsubscribe")) ||
     /bulk|list|auto_reply/i.test(header(headers, "Precedence")) ||
     Boolean(header(headers, "Auto-Submitted") && header(headers, "Auto-Submitted") !== "no") ||
-    AUTOMATED_SENDER.test(from.email);
+    AUTOMATED_SENDER.test(from.email) ||
+    SKIPPED_SENDER_DOMAIN.test(from.email.split("@")[1] ?? "");
   const ms = Number(last.internalDate);
   return {
     threadId: thread.id,
@@ -121,7 +126,7 @@ function parseThread(thread: gmail_v1.Schema$Thread): ParsedMessage | null {
 
 // --- dopasowanie nadawcy do bazy ----------------------------------------------
 
-type SenderMatch = { fact: string; priority: AgentPriority; suggestion: string };
+type SenderMatch = { fact: string; priority: AgentPriority; suggestion: string; skip?: boolean };
 
 type ProfileRow = { id: string; role: string; email: string; full_name: string | null };
 
@@ -197,7 +202,8 @@ async function matchSenders(admin: SupabaseClient, emails: string[]): Promise<Ma
         suggestion: "Grafik z bazy pisze — odpisz w ciągu dnia.",
       });
     } else if (p.role === "admin") {
-      result.set(email, { fact: "Nadawca: konto administratora", priority: "low", suggestion: "Mail od admina — prawdopodobnie test." });
+      // Raporty i testy wysyłane z konta admina — nie są sprawą do obsłużenia.
+      result.set(email, { fact: "", priority: "low", suggestion: "", skip: true });
     }
   }
   return result;
@@ -233,7 +239,7 @@ export async function fetchGmailCards(admin: SupabaseClient): Promise<AgentCard[
 
     const matches = await matchSenders(admin, Array.from(new Set(parsed.map((m) => m.fromEmail))));
 
-    return parsed.map((m) => {
+    return parsed.filter((m) => !matches.get(m.fromEmail)?.skip).map((m) => {
       const match = matches.get(m.fromEmail) ?? {
         fact: "Nieznany nadawca — brak konta w bazie",
         priority: "normal" as AgentPriority,
