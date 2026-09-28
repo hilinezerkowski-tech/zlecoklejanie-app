@@ -45,7 +45,7 @@ type ParsedMessage = {
   unread: boolean;
 };
 
-function getClient(): gmail_v1.Gmail | null {
+function getGmailClient(): gmail_v1.Gmail | null {
   const clientId = process.env.GMAIL_CLIENT_ID;
   const clientSecret = process.env.GMAIL_CLIENT_SECRET;
   const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
@@ -252,7 +252,7 @@ async function matchSenders(admin: SupabaseClient, emails: string[]): Promise<Ma
 let cache: { at: number; cards: AgentCard[] } | null = null;
 
 export async function fetchGmailCards(admin: SupabaseClient): Promise<AgentCard[]> {
-  const g = getClient();
+  const g = getGmailClient();
   if (!g) {
     console.warn("[agent] GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN not set — źródło Gmail wyłączone");
     return [];
@@ -327,11 +327,99 @@ async function loadGmailCards(g: gmail_v1.Gmail, admin: SupabaseClient): Promise
       facts,
       suggestion: match.suggestion,
       actions: [
-        { kind: "reply_email", label: "Odpisz", primary: true },
+        { kind: "reply_email", label: "Odpisz", primary: true, payload: { threadId: m.threadId } },
         { kind: "open", label: "Otwórz w Gmail", href: `https://mail.google.com/mail/u/0/#inbox/${m.threadId}` },
         { kind: "dismiss", label: "Później" },
       ],
     };
     return card;
   });
+}
+
+// --- odpowiedź z panelu agenta (Faza 5) -------------------------------------------
+
+// Alias "Wyślij jako" skonfigurowany w Gmailu (SMTP Resend) — tak samo podpisane
+// są ręczne odpowiedzi Wojtka do studiów.
+const REPLY_FROM = "ZlecOklejanie PL <kontakt@zlecoklejanie.pl>";
+const DONE_LABEL = "Agent-obsluzone";
+
+function encodeHeader(v: string): string {
+  return /^[\x20-\x7e]*$/.test(v) ? v : `=?UTF-8?B?${Buffer.from(v, "utf8").toString("base64")}?=`;
+}
+
+async function ensureDoneLabel(g: gmail_v1.Gmail, opts: { timeout: number }): Promise<string> {
+  const list = await g.users.labels.list({ userId: "me" }, opts);
+  const found = (list.data.labels ?? []).find((l) => l.name === DONE_LABEL);
+  if (found?.id) return found.id;
+  const created = await g.users.labels.create(
+    { userId: "me", requestBody: { name: DONE_LABEL, labelListVisibility: "labelShow", messageListVisibility: "show" } },
+    opts
+  );
+  if (!created.data.id) throw new Error("Gmail nie zwrócił id etykiety");
+  return created.data.id;
+}
+
+/**
+ * Odpowiedź w wątku Gmail. Adresat i temat pochodzą z OSTATNIEJ wiadomości wątku
+ * (serwer), nigdy z przeglądarki. Po wysyłce wątek dostaje etykietę
+ * Agent-obsluzone i znika z feedu.
+ */
+export async function sendGmailReply(
+  threadId: string,
+  text: string
+): Promise<{ ok: true; to: string } | { ok: false; error: string }> {
+  const g = getGmailClient();
+  if (!g) return { ok: false, error: "Gmail nie jest skonfigurowany na serwerze (brak GMAIL_*)." };
+  const opts = { timeout: REQUEST_TIMEOUT_MS };
+
+  const t = await g.users.threads.get(
+    { userId: "me", id: threadId, format: "metadata", metadataHeaders: ["From", "Reply-To", "Subject", "Message-ID", "References"] },
+    opts
+  );
+  const msgs = t.data.messages ?? [];
+  const last = msgs[msgs.length - 1];
+  if (!last) return { ok: false, error: "Wątek jest pusty." };
+  const h = last.payload?.headers;
+  const from = parseFrom(header(h, "From"));
+  const fromDomain = from.email.split("@")[1] ?? "";
+  if (SKIPPED_SENDER_DOMAIN.test(fromDomain) || AUTOMATED_SENDER.test(from.email)) {
+    return { ok: false, error: "Ostatnia wiadomość w wątku jest nasza albo od automatu — nie ma komu odpisać." };
+  }
+  const to = parseFrom(header(h, "Reply-To") || header(h, "From")).email;
+  if (!to.includes("@")) return { ok: false, error: "Nie udało się ustalić adresu nadawcy." };
+
+  const subj = header(h, "Subject").trim();
+  const subject = /^re:/i.test(subj) ? subj : `Re: ${subj || "(bez tematu)"}`;
+  const messageId = header(h, "Message-ID");
+  const references = [header(h, "References"), messageId].filter(Boolean).join(" ");
+
+  const mime = [
+    `From: ${REPLY_FROM}`,
+    `To: ${to}`,
+    `Subject: ${encodeHeader(subject)}`,
+    ...(messageId ? [`In-Reply-To: ${messageId}`, `References: ${references}`] : []),
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    Buffer.from(text, "utf8").toString("base64").replace(/.{76}/g, "$&\r\n"),
+  ].join("\r\n");
+
+  await g.users.messages.send(
+    { userId: "me", requestBody: { raw: Buffer.from(mime, "utf8").toString("base64url"), threadId } },
+    opts
+  );
+
+  // Etykieta i "przeczytane" są dodatkiem — mail już poszedł, błąd tu nie cofa sukcesu.
+  try {
+    const labelId = await ensureDoneLabel(g, opts);
+    await g.users.threads.modify(
+      { userId: "me", id: threadId, requestBody: { addLabelIds: [labelId], removeLabelIds: ["UNREAD"] } },
+      opts
+    );
+  } catch (e) {
+    console.warn("[agent] Gmail label/modify failed:", e instanceof Error ? e.message : e);
+  }
+  cache = null;
+  return { ok: true, to };
 }

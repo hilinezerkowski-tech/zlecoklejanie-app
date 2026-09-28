@@ -124,6 +124,7 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
         kind: "assign_studio",
         label: names.length > 1 ? `Przypisz ${names.slice(0, 2).join(" + ")}` : `Przypisz ${names[0]}`,
         primary: true,
+        payload: { orderId: order.id, studioIds: nearest },
       });
     }
     actions.push({ kind: "open", label: "Otwórz zlecenie", href: `/admin/zlecenia/${order.id}` });
@@ -194,12 +195,13 @@ export async function fetchPendingStudioCards(admin: SupabaseClient): Promise<Ag
 
     const actions: AgentCard["actions"] = [];
     if (hasPortfolio && hasSpecializations) {
-      actions.push({ kind: "activate_studio", label: "Aktywuj konto", primary: true });
+      actions.push({ kind: "activate_studio", label: "Aktywuj konto", primary: true, payload: { studioId: s.id } });
     } else {
       actions.push({
         kind: "request_info",
         label: "Poproś o portfolio",
         primary: true,
+        payload: { studioId: s.id },
         draft: `Cześć${s.business_name ? " " + s.business_name : ""}, dzięki za rejestrację na ZlecOklejanie.pl. Żeby aktywować konto, podeślij proszę link do Instagrama albo swojej strony z realizacjami. Odpisz na tego maila i aktywuję konto tego samego dnia.`,
       });
     }
