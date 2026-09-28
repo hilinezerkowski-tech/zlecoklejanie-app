@@ -1,5 +1,6 @@
 // Źródło "Gmail" dla feedu agenta — Faza 3.
-// Nieprzeczytane wątki ze skrzynki portalu (zlecoklejaniepl@gmail.com) jako
+// Wątki ze skrzynki portalu (zlecoklejaniepl@gmail.com), w których ostatnia
+// wiadomość jest od kogoś z zewnątrz — czyli czekają na naszą odpowiedź — jako
 // karty "email". Nadawca dopasowany do bazy (klient / studio / grafik).
 // Brak env GMAIL_* → źródło wyłączone (feed działa dalej).
 
@@ -7,8 +8,10 @@ import { gmail as gmailApi, auth as gmailAuth, type gmail_v1 } from "@googleapis
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentCard, AgentPriority } from "@/app/(dashboard)/admin/agent/types";
 
-const QUERY = "is:unread -label:Agent-obsluzone newer_than:14d";
-const MAX_THREADS = 30;
+// Bez is:unread (odejście od briefu): skrzynkę czyta się też w Gmailu, a przeczytany
+// mail bez odpowiedzi dalej czeka. Wątek z naszą odpowiedzią na końcu odpada niżej.
+const QUERY = "in:inbox -label:Agent-obsluzone newer_than:14d";
+const MAX_THREADS = 40;
 const BODY_LIMIT = 1500;
 const FACT_EXCERPT = 500;
 const REQUEST_TIMEOUT_MS = 8000;
@@ -35,6 +38,7 @@ type ParsedMessage = {
   occurredAt: string;
   body: string;
   automated: boolean;
+  unread: boolean;
 };
 
 function getClient(): gmail_v1.Gmail | null {
@@ -96,7 +100,9 @@ function extractBody(part: gmail_v1.Schema$MessagePart | undefined): string {
 
 function cleanBody(text: string): string {
   // Ucinamy cytowaną historię wątku i sygnaturę — model ma czytać nową treść.
-  const cut = text.split(/\r?\n(?:>|On .+ wrote:|W dniu .+ napisał|-----Original Message-----|________________)/)[0];
+  const cut = text.split(
+    /\r?\n(?:>|On .+ wrote:|W dniu .+ napisał|.+ napisał\(a\):|-{3,} ?(?:Original Message|Oryginalna wiadomość) ?-{3,}|From: .+|Od: .+<.+@.+>|________________)/
+  )[0];
   return cut.replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, BODY_LIMIT);
 }
 
@@ -121,6 +127,7 @@ function parseThread(thread: gmail_v1.Schema$Thread): ParsedMessage | null {
     occurredAt: Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : new Date().toISOString(),
     body: cleanBody(extractBody(last.payload)),
     automated,
+    unread: (last.labelIds ?? []).includes("UNREAD"),
   };
 }
 
@@ -251,6 +258,7 @@ export async function fetchGmailCards(admin: SupabaseClient): Promise<AgentCard[
         `Temat: ${m.subject}`,
         excerpt ? `Treść: „${excerpt}”` : "Treść: (pusta — tylko załączniki lub HTML bez tekstu)",
         match.fact,
+        m.unread ? "Stan: nieprzeczytany, bez odpowiedzi" : "Stan: przeczytany w Gmailu, bez odpowiedzi",
       ];
 
       const card: AgentCard = {
