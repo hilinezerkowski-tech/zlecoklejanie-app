@@ -328,7 +328,8 @@ async function loadGmailCards(g: gmail_v1.Gmail, admin: SupabaseClient): Promise
       suggestion: match.suggestion,
       actions: [
         { kind: "reply_email", label: "Odpisz", primary: true },
-        { kind: "open", label: "Otwórz w Gmail", href: `https://mail.google.com/mail/u/0/#inbox/${m.threadId}` },
+        // authuser=<adres>, nie /u/0/: w przeglądarce admina konto nr 0 to zwykle prywatny Gmail, nie skrzynka portalu.
+        { kind: "open", label: "Otwórz w Gmail", href: `https://mail.google.com/mail/?authuser=${encodeURIComponent(me)}#all/${m.threadId}` },
         { kind: "dismiss", label: "Później" },
       ],
     };
