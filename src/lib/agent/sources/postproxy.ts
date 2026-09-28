@@ -369,19 +369,24 @@ export type SocialReplyTarget =
 
 /**
  * Odpowiedź pod komentarzem albo w DM — wyłącznie z kont ZlecOklejanie (lista
- * PROFILES). Klucz Postproxy widzi też profile Hiline, więc profil i czat są
- * sprawdzane po stronie serwera, nie branie na wiarę z przeglądarki.
+ * PROFILES). Klucz Postproxy widzi też profile i strony Hiline, więc profil, strona
+ * posta i czat są sprawdzane po stronie serwera, nie brane na wiarę z przeglądarki.
  */
 export async function sendSocialReply(
   target: SocialReplyTarget,
   text: string
 ): Promise<{ ok: true; where: string } | { ok: false; error: string }> {
-  const key = apiKey();
-  if (!key) return { ok: false, error: "Postproxy nie jest skonfigurowany na serwerze (brak POSTPROXY_API_KEY)." };
   const profile = PROFILES.find((p) => p.id === target.profileId);
   if (!profile) return { ok: false, error: "Nieznany profil — odpowiadamy tylko z kont ZlecOklejanie." };
+  const key = apiKey(profile);
+  if (!key) return { ok: false, error: `Postproxy nie jest skonfigurowany na serwerze (brak ${profile.keyEnv}).` };
 
   if (target.mode === "comment") {
+    // Na FB ten sam profil publikuje też na stronie Hiline — sprawdzamy stronę posta.
+    const post = await pp<PostproxyPost>(`/posts/${encodeURIComponent(target.postId)}`, key).catch(() => null);
+    if (!post || !isOnProfile(post, profile)) {
+      return { ok: false, error: "Post nie jest na stronie ZlecOklejanie — odpowiedź wstrzymana." };
+    }
     await ppSend(
       `/posts/${encodeURIComponent(target.postId)}/comments?profile_id=${encodeURIComponent(profile.id)}`,
       key,
@@ -391,6 +396,9 @@ export async function sendSocialReply(
     return { ok: true, where: `komentarz na ${profile.label}` };
   }
 
+  if (profile.platform === "facebook") {
+    return { ok: false, error: "DM na Facebooku są wyłączone — czat nie mówi, czy to strona ZlecOklejanie, czy Hiline." };
+  }
   const chats = await pp<{ data?: PostproxyChat[] }>(`/profiles/${profile.id}/chats?per_page=50`, key);
   if (!(chats.data ?? []).some((c) => c.id === target.chatId)) {
     return { ok: false, error: "Ten czat nie należy do profilu ZlecOklejanie — wysyłka wstrzymana." };
