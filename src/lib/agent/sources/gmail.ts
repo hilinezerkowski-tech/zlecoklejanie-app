@@ -11,7 +11,11 @@ import type { AgentCard, AgentPriority } from "@/app/(dashboard)/admin/agent/typ
 // Bez is:unread (odejście od briefu): skrzynkę czyta się też w Gmailu, a przeczytany
 // mail bez odpowiedzi dalej czeka. Wątek z naszą odpowiedzią na końcu odpada niżej.
 const QUERY = "in:inbox -label:Agent-obsluzone newer_than:14d";
-const MAX_THREADS = 40;
+// Gmail liczy limit "jednostek na minutę na użytkownika": threads.get = 10 jednostek.
+// 20 wątków po 5 naraz + cache 3 min trzyma się daleko od limitu przy częstym "Odśwież".
+const MAX_THREADS = 20;
+const GET_CONCURRENCY = 5;
+const CACHE_TTL_MS = 3 * 60_000;
 const BODY_LIMIT = 1500;
 const FACT_EXCERPT = 500;
 const REQUEST_TIMEOUT_MS = 8000;
@@ -218,68 +222,90 @@ async function matchSenders(admin: SupabaseClient, emails: string[]): Promise<Ma
 
 // --- karty ---------------------------------------------------------------------
 
+// Cache na instancję funkcji: przy błędzie (np. limit Gmaila) oddajemy ostatni znany wynik.
+let cache: { at: number; cards: AgentCard[] } | null = null;
+
 export async function fetchGmailCards(admin: SupabaseClient): Promise<AgentCard[]> {
   const g = getClient();
   if (!g) {
     console.warn("[agent] GMAIL_CLIENT_ID/SECRET/REFRESH_TOKEN not set — źródło Gmail wyłączone");
     return [];
   }
+  if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.cards;
 
   try {
-    const opts = { timeout: REQUEST_TIMEOUT_MS };
-    const [profile, list] = await Promise.all([
-      g.users.getProfile({ userId: "me" }, opts),
-      g.users.threads.list({ userId: "me", q: QUERY, maxResults: MAX_THREADS }, opts),
-    ]);
-    const me = (profile.data.emailAddress ?? "").toLowerCase();
-    const ids = (list.data.threads ?? []).map((t) => t.id).filter((id): id is string => Boolean(id));
-    if (ids.length === 0) return [];
-
-    const threads = await Promise.all(
-      ids.map((id) => g.users.threads.get({ userId: "me", id, format: "full" }, opts))
-    );
-    const parsed = threads
-      .map((t) => parseThread(t.data))
-      .filter((m): m is ParsedMessage => m !== null)
-      .filter((m) => m.fromEmail && m.fromEmail !== me && !m.automated);
-    if (parsed.length === 0) return [];
-
-    const matches = await matchSenders(admin, Array.from(new Set(parsed.map((m) => m.fromEmail))));
-
-    return parsed.filter((m) => !matches.get(m.fromEmail)?.skip).map((m) => {
-      const match = matches.get(m.fromEmail) ?? {
-        fact: "Nieznany nadawca — brak konta w bazie",
-        priority: "normal" as AgentPriority,
-        suggestion: "Nieznany nadawca — sprawdź, czy to klient czy wykonawca, i odpisz z właściwym linkiem.",
-      };
-      const excerpt = m.body.length > FACT_EXCERPT ? m.body.slice(0, FACT_EXCERPT) + "…" : m.body;
-      const facts = [
-        `Od: ${m.fromName ? `${m.fromName} <${m.fromEmail}>` : m.fromEmail}`,
-        `Temat: ${m.subject}`,
-        excerpt ? `Treść: „${excerpt}”` : "Treść: (pusta — tylko załączniki lub HTML bez tekstu)",
-        match.fact,
-        m.unread ? "Stan: nieprzeczytany, bez odpowiedzi" : "Stan: przeczytany w Gmailu, bez odpowiedzi",
-      ];
-
-      const card: AgentCard = {
-        id: `mail:${m.threadId}`,
-        type: "email",
-        priority: match.priority,
-        source: "Gmail",
-        occurredAt: m.occurredAt,
-        title: `${m.subject} — ${m.fromName || m.fromEmail}`,
-        facts,
-        suggestion: match.suggestion,
-        actions: [
-          { kind: "reply_email", label: "Odpisz", primary: true },
-          { kind: "open", label: "Otwórz w Gmail", href: `https://mail.google.com/mail/u/0/#inbox/${m.threadId}` },
-          { kind: "dismiss", label: "Później" },
-        ],
-      };
-      return card;
-    });
+    const cards = await loadGmailCards(g, admin);
+    cache = { at: Date.now(), cards };
+    return cards;
   } catch (e) {
     console.warn("[agent] Gmail source failed:", e instanceof Error ? e.message : e);
-    return [];
+    return cache?.cards ?? [];
   }
+}
+
+async function getThreadsLimited(g: gmail_v1.Gmail, ids: string[], opts: { timeout: number }) {
+  const out: gmail_v1.Schema$Thread[] = [];
+  for (let i = 0; i < ids.length; i += GET_CONCURRENCY) {
+    const batch = await Promise.allSettled(
+      ids.slice(i, i + GET_CONCURRENCY).map((id) => g.users.threads.get({ userId: "me", id, format: "full" }, opts))
+    );
+    for (const r of batch) {
+      if (r.status === "fulfilled") out.push(r.value.data);
+      else console.warn("[agent] Gmail thread skipped:", r.reason instanceof Error ? r.reason.message : r.reason);
+    }
+  }
+  return out;
+}
+
+async function loadGmailCards(g: gmail_v1.Gmail, admin: SupabaseClient): Promise<AgentCard[]> {
+  const opts = { timeout: REQUEST_TIMEOUT_MS };
+  const [profile, list] = await Promise.all([
+    g.users.getProfile({ userId: "me" }, opts),
+    g.users.threads.list({ userId: "me", q: QUERY, maxResults: MAX_THREADS }, opts),
+  ]);
+  const me = (profile.data.emailAddress ?? "").toLowerCase();
+  const ids = (list.data.threads ?? []).map((t) => t.id).filter((id): id is string => Boolean(id));
+  if (ids.length === 0) return [];
+
+  const threads = await getThreadsLimited(g, ids, opts);
+  const parsed = threads
+    .map((t) => parseThread(t))
+    .filter((m): m is ParsedMessage => m !== null)
+    .filter((m) => m.fromEmail && m.fromEmail !== me && !m.automated);
+  if (parsed.length === 0) return [];
+
+  const matches = await matchSenders(admin, Array.from(new Set(parsed.map((m) => m.fromEmail))));
+
+  return parsed.filter((m) => !matches.get(m.fromEmail)?.skip).map((m) => {
+    const match = matches.get(m.fromEmail) ?? {
+      fact: "Nieznany nadawca — brak konta w bazie",
+      priority: "normal" as AgentPriority,
+      suggestion: "Nieznany nadawca — sprawdź, czy to klient czy wykonawca, i odpisz z właściwym linkiem.",
+    };
+    const excerpt = m.body.length > FACT_EXCERPT ? m.body.slice(0, FACT_EXCERPT) + "…" : m.body;
+    const facts = [
+      `Od: ${m.fromName ? `${m.fromName} <${m.fromEmail}>` : m.fromEmail}`,
+      `Temat: ${m.subject}`,
+      excerpt ? `Treść: „${excerpt}”` : "Treść: (pusta — tylko załączniki lub HTML bez tekstu)",
+      match.fact,
+      m.unread ? "Stan: nieprzeczytany, bez odpowiedzi" : "Stan: przeczytany w Gmailu, bez odpowiedzi",
+    ];
+
+    const card: AgentCard = {
+      id: `mail:${m.threadId}`,
+      type: "email",
+      priority: match.priority,
+      source: "Gmail",
+      occurredAt: m.occurredAt,
+      title: `${m.subject} — ${m.fromName || m.fromEmail}`,
+      facts,
+      suggestion: match.suggestion,
+      actions: [
+        { kind: "reply_email", label: "Odpisz", primary: true },
+        { kind: "open", label: "Otwórz w Gmail", href: `https://mail.google.com/mail/u/0/#inbox/${m.threadId}` },
+        { kind: "dismiss", label: "Później" },
+      ],
+    };
+    return card;
+  });
 }
