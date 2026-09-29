@@ -34,6 +34,15 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 - Analityka (GA4 `G-0PBM1QFP0L`, Clarity `y9anr0myh0`) wyłącznie po zgodzie (`zlec_cookie_consent`) i tylko na stronach publicznych (`/wykonawcy`, `/wykonawca/*` — layouty z `PublicAnalytics`). Nigdy w panelach (`/admin`, `/studio`, `/klient`, `/grafik`). Logika w `src/lib/analytics.ts` jest lustrem `assets/analytics.js` z landingu — zmieniasz jedno, zmień drugie.
 - Oceny Google są pokazywane osobno i opisane jako nieweryfikowane; nie trafiają do średniej portalu ani do JSON-LD.
 
+## Odpowiedź studia i harmonogram
+
+- Każdy mail/SMS do studia lub klienta z akcją = link tokenowy (`src/lib/action-links.ts`, strona `/o/<token>`, HMAC + ważność 7 dni, sekret `ACTION_LINK_SECRET`), nie magic link. Brak sekretu → mail wraca do linku do panelu.
+- Czasy SLA (przypomnienia 4 h / 24 h, wygaśnięcie 48 h roboczych, godziny robocze pn–sob 8–20 Europe/Warsaw) tylko z `src/lib/sla.ts` albo ustawień admina (`app_settings`, klucz `sla`). Tryb testowy: `SLA_TEST=1` (1 h robocza = 1 minuta).
+- Status przypisania: `declined` = studio odmówiło, `expired` = brak odpowiedzi w terminie, `rejected` = klient wybrał inne studio. Limity: 3 aktywne + 5 łącznie na zlecenie (trigger `check_max_assignments`, 028b).
+- Cron: `/api/cron/sla` co 15 min z pg_cron + pg_net (migracja 029, sekret `CRON_SECRET`). `/api/cron/retencja` domyślnie tylko liczy; usuwa dopiero z `RETENCJA_USUWAJ=1` i `?usun=1`.
+- SMS (`src/lib/sms.ts`, SMSAPI.pl): opcjonalny, brak `SMSAPI_TOKEN` = pomijany. Env: `SMSAPI_TOKEN`, `SMS_SENDER`, `ADMIN_PHONE`.
+- Automatyczna podmiana studia po wygaśnięciu: przełącznik w `/admin/ustawienia`, domyślnie WYŁ.; zawsze przez `przypiszStudia` bez `force`.
+
 ## Powiadomienia — KRYTYCZNE
 
 Wszystkie powiadomienia platformy (nowe zlecenia, rejestracje studiów, zgłoszenia grafików, leady z landingu) muszą trafiać na **`zlecoklejaniepl@gmail.com`**, NIE na `hiline.zerkowski@gmail.com`.

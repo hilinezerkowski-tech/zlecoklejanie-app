@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { APP_URL, sendEmail } from "@/lib/email";
 import { sendAssignedEmail } from "@/lib/notify-assigned";
+import { clientMagicLink, sendQuotedEmail } from "@/lib/notify-quoted";
 
 /**
  * Powiadomienia e-mail (Resend) po kluczowych akcjach marketplace'u.
@@ -28,33 +29,6 @@ function layout(title: string, body: string, ctaUrl: string, ctaLabel: string) {
     </p>
     <p style="font-size:12px;color:#888;">Logowanie bez hasla — na stronie logowania podaj swoj e-mail, wyslemy link.</p>
   </div>`;
-}
-
-// Magic-link do panelu klienta: klient bez hasla wchodzi jednym kliknieciem.
-// generateLink zwraca hashed_token wymieniany na sesje w /auth/confirm; wygasa
-// ~1h — po tym czasie link prowadzi do /login (klient poprosi o nowy). Fallback
-// na goly URL, gdy generateLink zawiedzie.
-async function clientMagicLink(
-  admin: ReturnType<typeof createAdminClient>,
-  email: string,
-  nextPath: string
-): Promise<string> {
-  try {
-    const { data, error } = await admin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-    });
-    const hashed = data?.properties?.hashed_token;
-    if (!error && hashed) {
-      return (
-        `${APP_URL}/auth/confirm?token_hash=${encodeURIComponent(hashed)}` +
-        `&type=magiclink&next=${encodeURIComponent(nextPath)}`
-      );
-    }
-  } catch {
-    /* fallback ponizej */
-  }
-  return `${APP_URL}${nextPath}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -149,26 +123,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (type === "quoted") {
-      // Mail do klienta o nowej ofercie
-      const { data: client } = await admin
-        .from("profiles")
-        .select("email")
-        .eq("id", order.client_id)
-        .single();
-      if (client?.email) {
-        await sendEmail(
-          client.email,
-          `Nowa oferta na Twoje zlecenie: ${orderLabel}`,
-          layout(
-            "Masz nowa oferte od studia",
-            `<p>Jedno ze studiow wycenilo Twoje zlecenie <strong>${orderLabel}</strong>.</p>
-             <p>Porownaj oferty i wybierz studio, ktore najbardziej Ci odpowiada.</p>`,
-            await clientMagicLink(admin, client.email, `/klient/zlecenia/${order.id}`),
-            "Zobacz oferty"
-          ),
-          { log: { event: "quoted", recipientRole: "client", orderId: order.id } }
-        );
-      }
+      // Mail do klienta o nowej ofercie (wspólny helper z linkiem tokenowym /o/<token>)
+      await sendQuotedEmail(admin, order.id);
     }
 
     if (type === "chosen") {

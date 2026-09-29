@@ -9,6 +9,7 @@ import {
   sendEmail,
 } from "@/lib/email";
 import { autoOnboardLead, type AutoOnboardResult } from "@/lib/onboarding";
+import { sendSms } from "@/lib/sms";
 
 /**
  * Obsluga nowego leada z landing page — dwa maile:
@@ -244,6 +245,16 @@ export async function POST(req: NextRequest) {
       log: { event: "lead_admin_alert", recipientRole: "admin", leadId: lead.id },
     }
   );
+
+  // SMS do admina o nowym zleceniu klienta (opcjonalny: bez SMSAPI_TOKEN/ADMIN_PHONE pomijany).
+  // Wykonawcy (studio/grafik/freelancer) mają własny alert mailowy — SMS tylko dla klientów.
+  if (lead.kind === "zlecenie") {
+    await sendSms(process.env.ADMIN_PHONE, `ZlecOklejanie: nowe zlecenie ${[p.auto, p.miasto].filter(Boolean).join(", ")}. Agent: ${APP_URL}/admin/agent`, {
+      event: "lead_admin_sms",
+      recipientRole: "admin",
+      leadId: lead.id,
+    });
+  }
 
   // ---- 2. Autoresponder do zglaszajacego --------------------------------
   // Adres pochodzi z bazy (rekord wstawiony przez formularz), nie z requestu.

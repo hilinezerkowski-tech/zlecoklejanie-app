@@ -10,6 +10,8 @@ const assignmentStatus: Record<string, { label: string; color: string }> = {
   quoted: { label: "Wyceniono", color: "bg-purple-400/15 text-purple-400" },
   chosen: { label: "Wybrano Ciebie 🎉", color: "bg-brand-lime/15 text-brand-lime" },
   rejected: { label: "Klient wybrał inne", color: "bg-red-400/15 text-red-400" },
+  declined: { label: "Odmówiono", color: "bg-white/10 text-brand-chrom" },
+  expired: { label: "Przekazane dalej", color: "bg-white/10 text-brand-chrom" },
 };
 
 export default async function StudioOrdersPage() {

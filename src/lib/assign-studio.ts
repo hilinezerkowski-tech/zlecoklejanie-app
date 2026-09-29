@@ -9,8 +9,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendAssignedEmail } from "@/lib/notify-assigned";
 import { labelUslugi, studioPasuje, type Dopasowanie } from "@/lib/uslugi";
+import { dodajGodzinyRobocze, pobierzUstawieniaSla } from "@/lib/sla";
 
+/** Aktywne przypisania (pending/quoted/chosen) na zlecenie. */
 export const MAX_STUDIOS_PER_ORDER = 3;
+/** Wszystkie przypisania z historią odmów i wygaśnięć (trigger check_max_assignments, migracja 028b). */
+export const MAX_PRZYPISAN_LACZNIE = 5;
+
+const NIEAKTYWNE = ["rejected", "declined", "expired"];
 
 export type PrzypisanieWynik =
   | {
@@ -39,7 +45,7 @@ type StudioRow = {
 
 export async function przypiszStudia(
   admin: SupabaseClient,
-  opts: { orderId: string; studioIds: string[]; adminId: string; force?: boolean }
+  opts: { orderId: string; studioIds: string[]; adminId: string | null; force?: boolean }
 ): Promise<PrzypisanieWynik> {
   const { orderId, adminId } = opts;
   const studioIds = Array.from(new Set(opts.studioIds));
@@ -48,11 +54,21 @@ export async function przypiszStudia(
   const { data: order } = await admin.from("orders").select("id, status, service_type").eq("id", orderId).maybeSingle();
   if (!order) return { ok: false, error: "Nie znaleziono zlecenia." };
 
-  const { data: existing } = await admin.from("order_assignments").select("studio_id").eq("order_id", orderId);
-  const juz = (existing ?? []).map((a: { studio_id: string }) => a.studio_id);
-  if (studioIds.some((id) => juz.includes(id))) return { ok: false, error: "To studio jest już przypisane do zlecenia." };
-  if (juz.length + studioIds.length > MAX_STUDIOS_PER_ORDER) {
-    return { ok: false, error: `To zlecenie ma już ${juz.length} przypisane studia (max ${MAX_STUDIOS_PER_ORDER}).` };
+  const { data: existing } = await admin.from("order_assignments").select("studio_id, status").eq("order_id", orderId);
+  const wszystkie = (existing ?? []) as { studio_id: string; status: string }[];
+  const juz = wszystkie.map((a) => a.studio_id);
+  if (studioIds.some((id) => juz.includes(id))) {
+    return { ok: false, error: "To studio było już przypisane do zlecenia (także po odmowie albo wygaśnięciu)." };
+  }
+  const aktywne = wszystkie.filter((a) => !NIEAKTYWNE.includes(a.status)).length;
+  if (aktywne + studioIds.length > MAX_STUDIOS_PER_ORDER) {
+    return { ok: false, error: `To zlecenie ma już ${aktywne} aktywne studia (max ${MAX_STUDIOS_PER_ORDER}).` };
+  }
+  if (wszystkie.length + studioIds.length > MAX_PRZYPISAN_LACZNIE) {
+    return {
+      ok: false,
+      error: `To zlecenie wykorzystało limit ${MAX_PRZYPISAN_LACZNIE} przypisań (z historią odmów) — dobierz wykonawcę ręcznie.`,
+    };
   }
 
   const { data: studios } = await admin
@@ -88,14 +104,20 @@ export async function przypiszStudia(
     };
   }
 
-  const { error: insertErr } = await admin
-    .from("order_assignments")
-    .insert(studioIds.map((studio_id) => ({ order_id: orderId, studio_id, assigned_by: adminId })));
+  // Termin odpowiedzi (godziny robocze, src/lib/sla.ts). due_at NOT NULL = przypisanie pilnowane
+  // przez cron; kolumna dochodzi z migracją 028b — bez niej zapisujemy przypisanie po staremu.
+  const sla = await pobierzUstawieniaSla(admin);
+  const dueAt = dodajGodzinyRobocze(new Date(), sla.wygasniecie, sla).toISOString();
+  const wiersze = studioIds.map((studio_id) => ({ order_id: orderId, studio_id, assigned_by: adminId }));
+  let { error: insertErr } = await admin.from("order_assignments").insert(wiersze.map((w) => ({ ...w, due_at: dueAt })));
+  if (insertErr && /due_at/.test(insertErr.message)) {
+    ({ error: insertErr } = await admin.from("order_assignments").insert(wiersze));
+  }
   if (insertErr) {
     return {
       ok: false,
       error: insertErr.message.includes("Maksymalnie")
-        ? "To zlecenie ma już 3 przypisane studia."
+        ? "To zlecenie ma już komplet przypisań (limit w bazie)."
         : `Błąd przypisania: ${insertErr.message}`,
     };
   }

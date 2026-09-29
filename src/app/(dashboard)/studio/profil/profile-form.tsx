@@ -19,6 +19,7 @@ type StudioProfile = {
   address: string | null;
   service_radius_km: number | null;
   is_paused: boolean | null;
+  paused_until?: string | null;
 };
 
 // Tablica -> tekst rozdzielany przecinkami (pola „Inne usługi” i foil_brands)
@@ -31,6 +32,7 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
   const [success, setSuccess] = useState("");
 
   const [paused, setPaused] = useState(studio.is_paused ?? false);
+  const [pausedUntil, setPausedUntil] = useState(studio.paused_until ? studio.paused_until.slice(0, 10) : "");
   const [form, setForm] = useState({
     business_name: studio.business_name || "",
     description: studio.description || "",
@@ -63,6 +65,7 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
       u_klienta: uslugi.uKlienta,
       specializations: uslugi.inne,
       is_paused: paused,
+      paused_until: paused ? pausedUntil : "",
     });
 
     if (!res.ok) {
@@ -185,6 +188,19 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
             </span>
           </span>
         </label>
+        {paused && (
+          <label className="mt-3 ml-7 flex items-center gap-3 text-sm">
+            <span className="text-brand-chrom">Pauza do (opcjonalnie):</span>
+            <input
+              type="date"
+              value={pausedUntil}
+              min={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setPausedUntil(e.target.value)}
+              className="rounded-lg border border-brand-border bg-brand-grafit px-3 py-1.5 text-sm"
+            />
+            <span className="text-xs text-brand-chrom">po tej dacie zlecenia wrócą same</span>
+          </label>
+        )}
       </div>
 
       <div className="flex items-center gap-4 pt-2">

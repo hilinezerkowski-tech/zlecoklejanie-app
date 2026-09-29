@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { AgentCard, AgentFeed } from "@/app/(dashboard)/admin/agent/types";
 import {
   fetchNewOrderCards,
+  fetchReplaceStudioCards,
   fetchPendingStudioCards,
   fetchPendingDesignerCards,
   fetchStuckLandingLeadCards,
@@ -44,6 +45,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
 
   const [
     orderCards,
+    replaceCards,
     pendingStudioCards,
     pendingDesignerCards,
     stuckLeadCards,
@@ -53,6 +55,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
     dismissedRows,
   ] = await Promise.all([
     fetchNewOrderCards(admin),
+    fetchReplaceStudioCards(admin),
     fetchPendingStudioCards(admin),
     fetchPendingDesignerCards(admin),
     fetchStuckLandingLeadCards(admin),
@@ -68,6 +71,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
 
   const all = [
     ...orderCards,
+    ...replaceCards,
     ...pendingStudioCards,
     ...pendingDesignerCards,
     ...stuckLeadCards,

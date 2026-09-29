@@ -7,6 +7,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentCard } from "@/app/(dashboard)/admin/agent/types";
 import { cityFromAddress, citySlug } from "@/lib/studio-location";
 import { labelUslugi, maUslugeCore, oczyscUslugi, studioPasuje } from "@/lib/uslugi";
+import { znajdzKandydatow } from "@/lib/podmiana";
+import { labelOdmowy } from "@/lib/odmowa";
 
 const scopeLabels: Record<string, string> = {
   full: "całe auto",
@@ -423,4 +425,106 @@ export async function fetchRespondedFreelancerCards(admin: SupabaseClient): Prom
     };
     return card;
   });
+}
+
+// --- Podmiana studia (Etap 2 ulepszeń): odmowa albo brak odpowiedzi w terminie ------------------
+
+type PodmianaRow = {
+  id: string;
+  order_id: string;
+  studio_id: string;
+  status: string;
+  assigned_at: string;
+  decline_reason: string | null;
+  order: { id: string; status: string; service_type: string; city: string; car_brand: string | null; car_model: string | null } | null;
+  studio: { business_name: string | null } | null;
+};
+
+/**
+ * Karta „Podmień studio”: przypisanie ze statusem declined/expired, po którym nie było już
+ * kolejnego przypisania do tego zlecenia. Kandydat: pasuje (usługa), to samo miasto, bez pauzy,
+ * nieprzypisany wcześniej. Karta jest liczona ze stanu bazy — znika sama po podmianie.
+ */
+export async function fetchReplaceStudioCards(admin: SupabaseClient): Promise<AgentCard[]> {
+  const { data, error } = await admin
+    .from("order_assignments")
+    .select(
+      "id, order_id, studio_id, status, assigned_at, decline_reason, order:orders!inner(id, status, service_type, city, car_brand, car_model), studio:studios!order_assignments_studio_id_fkey(business_name)"
+    )
+    .in("status", ["declined", "expired"])
+    .order("assigned_at", { ascending: true });
+  // Przed migracją 028a/b statusów nie ma — feed działa dalej bez tych kart.
+  if (error || !data) return [];
+
+  const rows = (data as unknown as PodmianaRow[]).filter(
+    (r) => r.order && ["new", "assigned", "quoted"].includes(r.order.status)
+  );
+  if (rows.length === 0) return [];
+
+  const { data: wszystkie } = await admin
+    .from("order_assignments")
+    .select("order_id, assigned_at")
+    .in(
+      "order_id",
+      Array.from(new Set(rows.map((r) => r.order_id)))
+    );
+  const najnowsze = new Map<string, string>();
+  for (const a of (wszystkie ?? []) as { order_id: string; assigned_at: string }[]) {
+    const cur = najnowsze.get(a.order_id);
+    if (!cur || a.assigned_at > cur) najnowsze.set(a.order_id, a.assigned_at);
+  }
+
+  const cards: AgentCard[] = [];
+  for (const r of rows) {
+    if (!r.order) continue;
+    // Było już kolejne przypisanie (podmiana zrobiona ręcznie albo automatycznie) → karta niepotrzebna.
+    if ((najnowsze.get(r.order_id) ?? "") > r.assigned_at) continue;
+
+    const kandydaci = await znajdzKandydatow(admin, r.order);
+    const auto = [r.order.car_brand, r.order.car_model].filter(Boolean).join(" ");
+    const nazwaStudia = r.studio?.business_name || "studio";
+    const odmowa = r.status === "declined";
+    const powod = odmowa ? labelOdmowy(r.decline_reason) : null;
+    const malo = odmowa && (r.decline_reason ?? "").startsWith("za_malo_informacji");
+
+    const facts = [
+      odmowa ? `${nazwaStudia} odmówiło: ${powod}` : `${nazwaStudia} nie odpowiedziało w terminie`,
+      `Usługa: ${labelUslugi(r.order.service_type)}`,
+      `Miasto: ${r.order.city}`,
+      kandydaci.length > 0
+        ? `Kolejni kandydaci (pasują, to samo miasto): ${kandydaci.slice(0, 3).map((k) => k.nazwa).join(", ")}`
+        : "Brak kolejnych pasujących studiów w tym mieście",
+    ];
+
+    const suggestion = malo
+      ? "Studio prosi o więcej informacji — najpierw dopytaj klienta o szczegóły, potem podmień studio."
+      : kandydaci.length > 0
+        ? `Przypisz następne studio: ${kandydaci[0].nazwa}.`
+        : "Brak pasujących kandydatów — dobierz wykonawcę ręcznie w panelu zlecenia.";
+
+    const actions: AgentCard["actions"] = [];
+    if (kandydaci.length > 0) {
+      actions.push({
+        kind: "assign_studio",
+        label: `Podmień na ${kandydaci[0].nazwa}`,
+        primary: !malo,
+        payload: { orderId: r.order_id, studioIds: [kandydaci[0].id] },
+      });
+    }
+    actions.push({ kind: "open", label: "Otwórz zlecenie", href: `/admin/zlecenia/${r.order_id}` });
+    actions.push({ kind: "dismiss", label: "Później" });
+
+    cards.push({
+      id: `replace:${r.id}`,
+      type: "new_order",
+      priority: "high",
+      source: "Supabase",
+      occurredAt: r.assigned_at,
+      title: `Podmień studio: ${auto ? `${auto} — ` : ""}${r.order.city}`,
+      facts,
+      suggestion,
+      actions,
+    });
+  }
+  return cards;
 }
