@@ -12,7 +12,7 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 ## Baza danych
 
 - Tabele: `landing_leads`, `orders`, `studios`, `designers`, `quotes`, `notifications`, `order_assignments`, `profiles`.
-- Migracje do `010_contact_exchange.sql`; funkcja `get_order_contact` (SECURITY DEFINER) do wymiany kontaktu po zatwierdzeniu.
+- Migracje w `supabase/migrations/` (ostatnie: 024a/024b/024c/025 — słownik usług); przed nową sprawdzić numer; funkcja `get_order_contact` (SECURITY DEFINER) do wymiany kontaktu po zatwierdzeniu.
 - **`profiles` = UNRESTRICTED** — włączyć RLS przed uruchomieniem Auth dla użytkowników. Otwarty punkt RODO (art. 32).
 - **Nieodwracalne operacje** (DELETE, TRUNCATE, DROP): Claude przygotowuje SQL w bloku `BEGIN; ... COMMIT;` z komentarzem co robi, Wojtek uruchamia sam w SQL Editorze. Nigdy nie wykonywać automatycznie.
 
@@ -20,6 +20,14 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 
 - Panel klienta i panele wykonawców (studio / grafik) — gotowe, testowane lokalnie.
 - Panel admina (zatwierdzanie zgłoszeń przez Wojtka) — DO ZROBIENIA, wymaga Supabase Auth + RLS.
+
+## Usługi wykonawców — słownik
+
+- Usługi wykonawców: wyłącznie słownik z `src/lib/uslugi.ts` (kody: `zmiana_koloru`, `detale`, `dechrom`, `ppf`, `ppf_kolor`, `reklama`, `szyby`, `detailing`; zlecenia dodatkowo `grafika`, `inne`). Nowa usługa = zmiana w `uslugi.ts` + migracja CHECK (`studios_services_slownik`) i wartość enuma `service_type` + checkbox na landingu (index, dolacz, wrapper) + opcja w select klienta (index + 30 podstron `uslugi/*`). Nigdy wolny tekst do dobierania.
+- `studios.services` = do dobierania; `studios.specializations` = „Inne usługi (opis)”, tylko do profilu. Dojazd do klienta = `work_mode` `u_klienta`, nie usługa.
+- Przypisanie studia tylko przez `assignStudio` (server action) — nigdy insert do `order_assignments` z przeglądarki.
+- Pola IG — wspólny helper (zasada z 28.09) obowiązuje też w nowych formularzach.
+- Kontrola mapowań: `node scripts/check-uslugi.mjs` (bez zależności, Node ≥ 23.6).
 
 ## Powiadomienia — KRYTYCZNE
 

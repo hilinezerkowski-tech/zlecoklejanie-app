@@ -5,15 +5,7 @@ import Link from "next/link";
 import { QuoteForm } from "./quote-form";
 import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
-
-// Etykiety spójne z listą zleceń i panelem admina
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "Folia PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
-};
+import { labelUslugi } from "@/lib/uslugi";
 
 const scopeLabels: Record<string, string> = {
   full: "Całe auto",
@@ -103,7 +95,7 @@ export default async function StudioOrderDetailPage({
       </Link>
 
       <h1 className="text-2xl font-bold mt-3 mb-1">
-        {serviceLabels[order.service_type] || order.service_type}
+        {labelUslugi(order.service_type)}
         {order.car_brand && ` — ${order.car_brand} ${order.car_model || ""}`}
       </h1>
       <p className="text-brand-chrom mb-8">
@@ -116,7 +108,7 @@ export default async function StudioOrderDetailPage({
         <h2 className="font-semibold mb-2">Szczegóły zapytania</h2>
         <Detail
           label="Usługa"
-          value={serviceLabels[order.service_type] || order.service_type}
+          value={labelUslugi(order.service_type)}
         />
         {(order.car_brand || order.car_model) && (
           <Detail

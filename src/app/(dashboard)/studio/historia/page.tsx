@@ -1,12 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "Folia PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
-};
+import { labelUslugi } from "@/lib/uslugi";
 
 // Wynik przypisania z perspektywy studia (stany zakończone).
 const outcome: Record<string, { label: string; color: string }> = {
@@ -84,8 +77,7 @@ export default async function StudioHistoriaPage() {
                   <div>
                     <div className="flex items-center gap-3 mb-1">
                       <h3 className="font-semibold">
-                        {serviceLabels[a.order.service_type] ||
-                          a.order.service_type}
+                        {labelUslugi(a.order.service_type)}
                       </h3>
                       <span
                         className={`text-xs px-2 py-1 rounded-full font-medium ${oc.color}`}

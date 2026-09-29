@@ -6,14 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentCard } from "@/app/(dashboard)/admin/agent/types";
 import { cityFromAddress, citySlug } from "@/lib/studio-location";
-
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
-};
+import { labelUslugi } from "@/lib/uslugi";
 
 const scopeLabels: Record<string, string> = {
   full: "całe auto",
@@ -104,7 +97,7 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
 
     const facts = [
       `Klient: ${clientLine}`,
-      `Usługa: ${serviceLabels[order.service_type] || order.service_type}${
+      `Usługa: ${labelUslugi(order.service_type)}${
         order.scope ? `, ${scopeLabels[order.scope] || order.scope}` : ""
       }`,
       `Miasto: ${order.city}`,

@@ -7,6 +7,7 @@
 import { gmail as gmailApi, auth as gmailAuth, type gmail_v1 } from "@googleapis/gmail";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentCard, AgentPriority } from "@/app/(dashboard)/admin/agent/types";
+import { labelUslugi } from "@/lib/uslugi";
 
 // Bez is:unread (odejście od briefu): skrzynkę czyta się też w Gmailu, a przeczytany
 // mail bez odpowiedzi dalej czeka. Wątek z naszą odpowiedzią na końcu odpada niżej.
@@ -25,14 +26,6 @@ const AUTOMATED_SENDER = /no-?reply|mailer-daemon|postmaster|notifications?@|new
 // wracają przez ImprovMX jako nieprzeczytane) i powiadomienia platform: leady z nich
 // są już w feedzie jako karty z bazy, a "odpowiedź" poszłaby do automatu.
 const SKIPPED_SENDER_DOMAIN = /(^|\.)(zlecoklejanie\.pl|netlify\.com|vercel\.com|supabase\.(io|com)|mailerlite\.com|github\.com|resend\.(com|dev))$/i;
-
-const serviceLabels: Record<string, string> = {
-  oklejanie: "oklejanie",
-  ppf: "PPF",
-  branding: "branding",
-  grafika: "grafika",
-  inne: "inne",
-};
 
 type ParsedMessage = {
   threadId: string;
@@ -223,7 +216,7 @@ async function matchSenders(admin: SupabaseClient, emails: string[]): Promise<Ma
       const o = openOrderByClient.get(p.id);
       if (o) {
         result.set(email, {
-          fact: `Nadawca w bazie: klient zlecenia ${o.id.slice(0, 8)} (${o.city}, ${serviceLabels[o.service_type] || o.service_type}, status ${o.status})`,
+          fact: `Nadawca w bazie: klient zlecenia ${o.id.slice(0, 8)} (${o.city}, ${labelUslugi(o.service_type)}, status ${o.status})`,
           priority: "high",
           suggestion: "Klient z otwartym zleceniem czeka na odpowiedź — odpisz dziś.",
         });
