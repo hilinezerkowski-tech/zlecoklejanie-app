@@ -149,7 +149,10 @@ async function fetchCommentCards(
   const posts = await pp<{ data?: PostproxyPost[] }>(
     `/posts?profile_group_id=${profile.groupId}&status=published&per_page=50`,
     key
-  ).catch(() => ({ data: [] as PostproxyPost[] }));
+  ).catch((e) => {
+    console.warn(`[agent] Postproxy ${profile.label}: posty niedostępne —`, e instanceof Error ? e.message : e);
+    return { data: [] as PostproxyPost[] };
+  });
 
   // Tylko posty faktycznie opublikowane NA TYM profilu (grupa może mieć inne konta).
   const relevant = (posts.data ?? [])
@@ -230,7 +233,10 @@ async function fetchChatCards(
   const chats = await pp<{ data?: PostproxyChat[] }>(
     `/profiles/${profile.id}/chats?per_page=20`,
     key
-  ).catch(() => ({ data: [] as PostproxyChat[] }));
+  ).catch((e) => {
+    console.warn(`[agent] Postproxy ${profile.label}: czaty niedostępne —`, e instanceof Error ? e.message : e);
+    return { data: [] as PostproxyChat[] };
+  });
 
   // Ostatnia wiadomość przychodząca nowsza niż nasza odpowiedź = czeka na nas.
   const unanswered = (chats.data ?? []).filter((c) => {
@@ -363,6 +369,54 @@ async function ppSend<T>(path: string, key: string, body: unknown): Promise<T> {
   }
 }
 
+// Wysyłka jest asynchroniczna: POST zwraca status "pending", a Meta może odrzucić
+// wiadomość dopiero po chwili (np. DM poza oknem 24 h). Dlatego po wysłaniu czekamy
+// krótko na status końcowy — inaczej panel mówi "Wysłano", a nic nie wyszło.
+const CONFIRM_ATTEMPTS = 4;
+const CONFIRM_DELAY_MS = 1500;
+
+type SentItem = {
+  id: string;
+  status: string;
+  /** Wiadomości: error_message, komentarze: error. */
+  error_message?: string | null;
+  error?: string | null;
+  error_details?: { platform_error_message?: string | null; postproxy_note?: string | null } | null;
+};
+
+type Delivery =
+  | { state: "published" }
+  | { state: "failed"; error: string }
+  | { state: "unconfirmed"; status: string };
+
+function describeFailure(item: SentItem): string {
+  const parts = [
+    item.error_details?.platform_error_message,
+    item.error_message ?? item.error,
+    item.error_details?.postproxy_note,
+  ]
+    .map((s) => (s || "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(parts)).join(" — ").slice(0, 300) || "Postproxy nie podał powodu";
+}
+
+async function waitForDelivery(first: SentItem, statusPath: string, key: string): Promise<Delivery> {
+  if (!first?.id) return { state: "unconfirmed", status: first?.status || "nieznany" };
+  let item = first;
+  for (let i = 0; ; i++) {
+    if (item.status === "published") return { state: "published" };
+    if (item.status === "failed") return { state: "failed", error: describeFailure(item) };
+    if (i >= CONFIRM_ATTEMPTS) return { state: "unconfirmed", status: item.status };
+    await new Promise((r) => setTimeout(r, CONFIRM_DELAY_MS));
+    // Błąd odczytu statusu nie znaczy, że wysyłka padła — zostajemy przy ostatnim znanym.
+    item = await pp<SentItem>(statusPath, key).catch(() => item);
+  }
+}
+
+export type SocialReplyResult =
+  | { ok: true; where: string; sentId: string; confirmed: boolean; status: string }
+  | { ok: false; error: string };
+
 export type SocialReplyTarget =
   | { mode: "comment"; profileId: string; postId: string; parentId: string }
   | { mode: "chat"; profileId: string; chatId: string };
@@ -375,7 +429,7 @@ export type SocialReplyTarget =
 export async function sendSocialReply(
   target: SocialReplyTarget,
   text: string
-): Promise<{ ok: true; where: string } | { ok: false; error: string }> {
+): Promise<SocialReplyResult> {
   const profile = PROFILES.find((p) => p.id === target.profileId);
   if (!profile) return { ok: false, error: "Nieznany profil — odpowiadamy tylko z kont ZlecOklejanie." };
   const key = apiKey(profile);
@@ -387,13 +441,12 @@ export async function sendSocialReply(
     if (!post || !isOnProfile(post, profile)) {
       return { ok: false, error: "Post nie jest na stronie ZlecOklejanie — odpowiedź wstrzymana." };
     }
-    await ppSend(
-      `/posts/${encodeURIComponent(target.postId)}/comments?profile_id=${encodeURIComponent(profile.id)}`,
-      key,
-      { body: text, parent_id: target.parentId }
-    );
+    const postPath = `/posts/${encodeURIComponent(target.postId)}/comments`;
+    const profileQuery = `?profile_id=${encodeURIComponent(profile.id)}`;
+    const sent = await ppSend<SentItem>(`${postPath}${profileQuery}`, key, { body: text, parent_id: target.parentId });
     cache = null;
-    return { ok: true, where: `komentarz na ${profile.label}` };
+    const d = await waitForDelivery(sent, `${postPath}/${encodeURIComponent(sent.id)}${profileQuery}`, key);
+    return deliveryResult(d, sent.id, `komentarz na ${profile.label}`);
   }
 
   if (profile.platform === "facebook") {
@@ -404,8 +457,20 @@ export async function sendSocialReply(
     return { ok: false, error: "Ten czat nie należy do profilu ZlecOklejanie — wysyłka wstrzymana." };
   }
   // Bez tagu HUMAN_AGENT: Meta pozwala na wolną odpowiedź w 24 h od ostatniej wiadomości;
-  // poza oknem Postproxy zwróci błąd i admin zobaczy go w toaście.
-  await ppSend(`/chats/${encodeURIComponent(target.chatId)}/messages`, key, { body: text });
+  // poza oknem wiadomość kończy jako "failed" — waitForDelivery zwraca to jako błąd.
+  const sent = await ppSend<SentItem>(`/chats/${encodeURIComponent(target.chatId)}/messages`, key, { body: text });
   cache = null;
-  return { ok: true, where: `wiadomość prywatna na ${profile.label}` };
+  const d = await waitForDelivery(sent, `/messages/${encodeURIComponent(sent.id)}`, key);
+  return deliveryResult(d, sent.id, `wiadomość prywatna na ${profile.label}`);
+}
+
+function deliveryResult(d: Delivery, sentId: string, where: string): SocialReplyResult {
+  if (d.state === "failed") return { ok: false, error: `Postproxy odrzucił wysyłkę (${where}): ${d.error}` };
+  return {
+    ok: true,
+    where,
+    sentId,
+    confirmed: d.state === "published",
+    status: d.state === "published" ? "published" : d.status,
+  };
 }

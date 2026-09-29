@@ -22,7 +22,16 @@ export type AgentActionRequest = {
   draft?: string;
 };
 
-export type AgentActionResult = { ok: true; message: string } | { ok: false; error: string };
+export type AgentActionResult =
+  | {
+      ok: true;
+      message: string;
+      /** Wysyłka niepotwierdzona — nie oznaczamy karty jako done; zniknie z feedu sama, gdy dojdzie. */
+      keepCard?: boolean;
+      /** Dodatkowe pola do admin_actions.payload (np. id wysłanej wiadomości). */
+      log?: Record<string, unknown>;
+    }
+  | { ok: false; error: string };
 
 const MAX_STUDIOS_PER_ORDER = 3;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -169,7 +178,15 @@ async function replySocial(p: Record<string, unknown> | undefined, draft: string
     return fail("Nieznany rodzaj odpowiedzi.");
   }
   const r = await sendSocialReply(target, draft);
-  return r.ok ? { ok: true, message: `Wysłano: ${r.where}.` } : fail(r.error);
+  if (!r.ok) return fail(r.error);
+  const log = { sentId: r.sentId, sendStatus: r.status };
+  if (r.confirmed) return { ok: true, message: `Wysłano: ${r.where}.`, log };
+  return {
+    ok: true,
+    keepCard: true,
+    log,
+    message: `Przyjęte do wysyłki (${r.where}), ale Postproxy jeszcze nie potwierdził (status: ${r.status}). Nie wysyłaj ponownie — odśwież feed za kilka minut: jeśli karta wróci, wiadomość nie doszła.`,
+  };
 }
 
 // --- wejście ---------------------------------------------------------------------------
@@ -211,13 +228,13 @@ export async function executeAgentAction(
     entity: "agent",
     action: req.kind,
     entity_id: req.cardId,
-    payload: { ...(req.payload ?? {}), ...(draft ? { draft } : {}) },
+    payload: { ...(req.payload ?? {}), ...(draft ? { draft } : {}), ...(result.ok ? result.log : {}) },
     result: result.ok ? "ok" : "error",
     error: result.ok ? null : result.error.slice(0, 500),
   });
   if (logErr) console.warn("[agent] admin_actions insert failed:", logErr.message);
 
-  if (result.ok) {
+  if (result.ok && !result.keepCard) {
     const row = { card_id: req.cardId, dismissed_by: adminId, dismissed_at: new Date().toISOString() };
     const { error } = await admin.from("agent_dismissed").upsert({ ...row, reason: "done" });
     // Bez migracji 023 nie ma kolumny reason — karta i tak ma zniknąć.
