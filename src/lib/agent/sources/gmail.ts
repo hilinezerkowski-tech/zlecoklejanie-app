@@ -36,6 +36,8 @@ const serviceLabels: Record<string, string> = {
 
 type ParsedMessage = {
   threadId: string;
+  /** Id ostatniej wiadomości w wątku — część id karty. */
+  messageId: string;
   fromName: string;
   fromEmail: string;
   subject: string;
@@ -151,6 +153,7 @@ function parseThread(thread: gmail_v1.Schema$Thread): ParsedMessage | null {
   const ms = Number(last.internalDate);
   return {
     threadId: thread.id,
+    messageId: last.id,
     fromName: from.name,
     fromEmail: from.email,
     subject: header(headers, "Subject").trim() || "(bez tematu)",
@@ -318,7 +321,9 @@ async function loadGmailCards(g: gmail_v1.Gmail, admin: SupabaseClient): Promise
     ];
 
     const card: AgentCard = {
-      id: `mail:${m.threadId}`,
+      // Id karty = wątek + ostatnia wiadomość: "Później"/"done" dotyczy tej wiadomości,
+      // a nowa wiadomość w tym samym wątku daje nową kartę.
+      id: `mail:${m.threadId}:${m.messageId}`,
       type: "email",
       priority: match.priority,
       source: "Gmail",
