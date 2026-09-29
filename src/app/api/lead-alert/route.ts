@@ -9,6 +9,7 @@ import {
   sendEmail,
 } from "@/lib/email";
 import { autoOnboardLead, type AutoOnboardResult } from "@/lib/onboarding";
+import { etykietaPolaUslugi } from "@/lib/uslugi";
 
 /**
  * Obsluga nowego leada z landing page — dwa maile:
@@ -57,11 +58,6 @@ const fieldLabels: Record<string, string> = {
   email: "E-mail",
   telefon: "Telefon",
   zrodlo: "Zrodlo (strona)",
-  usl_wrap: "Robi: wrap",
-  usl_ppf: "Robi: PPF",
-  usl_reklama: "Robi: reklama / floty",
-  usl_szyby: "Robi: szyby",
-  usl_mobilnie: "Dojezdza do klienta",
   zgoda_post_powitalny: "Zgoda na post powitalny",
 };
 
@@ -201,7 +197,7 @@ export async function POST(req: NextRequest) {
     .map(
       ([k, v]) =>
         `<tr><td style="padding:4px 12px 4px 0;color:#666;white-space:nowrap;vertical-align:top;">${escapeHtml(
-          fieldLabels[k] || k
+          etykietaPolaUslugi(k) || fieldLabels[k] || k
         )}</td><td style="padding:4px 0;"><strong>${escapeHtml(
           String(v)
         )}</strong></td></tr>`

@@ -202,6 +202,16 @@ export function mapLandingCheckboxy(payload: Record<string, unknown> | null | un
   };
 }
 
+/**
+ * Etykieta pola leada z checkboxów usług landingu (usl_<kod>, stare usl_wrap…, usl_mobilnie)
+ * — do maila alertu i panelu /admin/leady. Zwraca null dla innych pól.
+ */
+export function etykietaPolaUslugi(pole: string): string | null {
+  if (pole === "usl_mobilnie") return "Dojeżdża do klienta";
+  const kod = STARE_CHECKBOXY[pole] ?? (pole.startsWith("usl_") && isUslugaKod(pole.slice(4)) ? pole.slice(4) : null);
+  return kod ? `Robi: ${labelUslugi(kod)}` : null;
+}
+
 // --- dobór studia do zlecenia -----------------------------------------------------------
 
 /**
