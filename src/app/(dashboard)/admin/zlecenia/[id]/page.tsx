@@ -18,6 +18,7 @@ import {
   NeedsDesignerToggle,
 } from "./designer-section";
 import { labelUslugi } from "@/lib/uslugi";
+import { labelOdmowy } from "@/lib/odmowa";
 
 export default async function OrderDetailPage({
   params,
@@ -46,9 +47,7 @@ export default async function OrderDetailPage({
   const { data: assignments } = await supabase
     .from("order_assignments")
     .select(`
-      id,
-      status,
-      assigned_at,
+      *,
       studio:studios!order_assignments_studio_id_fkey(
         id,
         business_name,
@@ -409,8 +408,10 @@ export default async function OrderDetailPage({
                         ? "bg-purple-400/15 text-purple-400"
                         : a.status === "chosen"
                         ? "bg-brand-lime/15 text-brand-lime"
-                        : a.status === "rejected"
+                        : a.status === "rejected" || a.status === "declined"
                         ? "bg-red-400/15 text-red-400"
+                        : a.status === "expired"
+                        ? "bg-white/10 text-brand-chrom"
                         : "bg-amber-400/15 text-amber-400"
                     }`}
                   >
@@ -422,6 +423,10 @@ export default async function OrderDetailPage({
                       ? "Wybrany"
                       : a.status === "rejected"
                       ? "Odrzucony"
+                      : a.status === "declined"
+                      ? `Odmówiło${a.decline_reason ? ` (${labelOdmowy(a.decline_reason)})` : ""}`
+                      : a.status === "expired"
+                      ? "Brak odpowiedzi w terminie"
                       : a.status}
                   </span>
                   <AssignmentActions

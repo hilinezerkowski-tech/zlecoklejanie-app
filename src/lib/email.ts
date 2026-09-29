@@ -80,13 +80,15 @@ export type EmailLogMeta = {
   recipientRole?: "client" | "studio" | "designer" | "admin" | "lead";
   orderId?: string | null;
   leadId?: string | null;
+  /** Kanał; domyślnie e-mail. SMS-y (src/lib/sms.ts) logują się tu z channel: "sms". */
+  channel?: "email" | "sms";
 };
 
 /**
  * Zapis próby wysyłki do email_log. Best-effort: błąd zapisu logu
  * NIGDY nie przerywa wysyłki ani akcji użytkownika.
  */
-async function writeEmailLog(
+export async function writeEmailLog(
   meta: EmailLogMeta,
   to: string,
   subject: string,
@@ -102,6 +104,8 @@ async function writeEmailLog(
       recipient_role: meta.recipientRole ?? null,
       order_id: meta.orderId ?? null,
       lead_id: meta.leadId ?? null,
+      // Kolumna channel dochodzi z migracją 028b — do czasu jej odpalenia zapisujemy ją tylko dla SMS.
+      ...(meta.channel === "sms" ? { channel: "sms" } : {}),
       subject,
       status,
       provider_id: providerId ?? null,

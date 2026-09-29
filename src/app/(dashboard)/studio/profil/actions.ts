@@ -23,6 +23,8 @@ export type StudioProfileInput = {
   address: string;
   service_radius_km: string;
   is_paused: boolean;
+  /** Pauza do daty (RRRR-MM-DD) — po niej cron sam wznawia leady. Puste = bez daty. */
+  paused_until?: string;
 };
 
 export type StudioProfileResult = { ok: boolean; error?: string };
@@ -76,6 +78,12 @@ export async function updateOwnStudioProfile(input: StudioProfileInput): Promise
         "Jeśli problem się powtarza, napisz do nas.",
     };
   }
+
+  // Pauza do daty: osobny zapis, bo kolumna paused_until dochodzi z migracją 028b — jej brak
+  // nie może blokować zapisu reszty profilu.
+  const pauzaDo = input.is_paused && /^d{4}-d{2}-d{2}$/.test(input.paused_until ?? "") ? `${input.paused_until}T06:00:00Z` : null;
+  const { error: pauzaErr } = await supabase.from("studios").update({ paused_until: pauzaDo }).eq("id", user.id);
+  if (pauzaErr && pauzaDo) console.warn("[updateOwnStudioProfile] paused_until:", pauzaErr.message);
 
   revalidatePath("/studio");
   revalidatePath("/studio/profil");

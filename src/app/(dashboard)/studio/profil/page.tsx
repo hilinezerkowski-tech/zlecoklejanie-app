@@ -33,6 +33,9 @@ export default async function StudioProfilPage() {
     .eq("id", user!.id)
     .single();
 
+  // Pauza do daty (migracja 028b) — osobne, tolerancyjne zapytanie: bez kolumny profil nadal się wyświetli.
+  const { data: pauza } = await supabase.from("studios").select("paused_until").eq("id", user!.id).maybeSingle();
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-2">Mój profil</h1>
@@ -50,7 +53,7 @@ export default async function StudioProfilPage() {
         </div>
       ) : (
         <>
-          <ProfileForm studio={studio} />
+          <ProfileForm studio={{ ...studio, paused_until: (pauza as { paused_until?: string | null } | null)?.paused_until ?? null }} />
 
           <section className="mt-10">
             <h2 className="text-lg font-semibold mb-1">Portfolio realizacji</h2>

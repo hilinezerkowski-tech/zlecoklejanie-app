@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { scalUstawieniaSla } from "@/lib/sla";
+import { SlaForm } from "./sla-form";
 
 export default async function UstawieniaPage() {
   const supabase = await createClient();
@@ -10,9 +13,16 @@ export default async function UstawieniaPage() {
     .eq("id", user?.id)
     .single();
 
+  // Ustawienia SLA i automatycznej podmiany (tabela app_settings, migracja 028b) — tolerancyjnie: bez tabeli domyślne.
+  const { data: ustawienia } = await createAdminClient().from("app_settings").select("key, value").in("key", ["sla", "auto_podmiana"]);
+  const sla = scalUstawieniaSla(ustawienia?.find((r) => r.key === "sla")?.value);
+  const autoPodmiana = Boolean((ustawienia?.find((r) => r.key === "auto_podmiana")?.value as { wlaczona?: boolean } | undefined)?.wlaczona);
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-8">Ustawienia</h1>
+
+      <SlaForm sla={sla} autoPodmiana={autoPodmiana} />
 
       {/* Profil admina */}
       <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6 mb-6">

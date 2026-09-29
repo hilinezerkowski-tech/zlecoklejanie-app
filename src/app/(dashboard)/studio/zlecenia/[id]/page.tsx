@@ -211,6 +211,12 @@ export default async function StudioOrderDetailPage({
             closedNote="Rozmowa zamknięta."
           />
         </div>
+      ) : assignment.status === "declined" || assignment.status === "expired" ? (
+        <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6 text-sm text-brand-chrom">
+          {assignment.status === "declined"
+            ? "Odmówiono tego zlecenia — przekazaliśmy je innemu studiu."
+            : "Termin na odpowiedź minął — zlecenie przekazaliśmy dalej."}
+        </div>
       ) : (
         <QuoteForm
           orderId={order.id}
