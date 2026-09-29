@@ -6,6 +6,7 @@ import {
   fetchStuckLandingLeadCards,
   fetchRespondedFreelancerCards,
 } from "@/lib/agent/sources/supabase";
+import { fetchGmailCards } from "@/lib/agent/sources/gmail";
 import { enrichWithSuggestions } from "@/lib/agent/suggest";
 
 const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 } as const;
@@ -29,18 +30,19 @@ function sortCards(cards: AgentCard[]): AgentCard[] {
 export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Promise<AgentFeed> {
   const admin = createAdminClient();
 
-  const [orderCards, pendingStudioCards, stuckLeadCards, respondedFreelancerCards, dismissedRows] =
+  const [orderCards, pendingStudioCards, stuckLeadCards, respondedFreelancerCards, gmailCards, dismissedRows] =
     await Promise.all([
       fetchNewOrderCards(admin),
       fetchPendingStudioCards(admin),
       fetchStuckLandingLeadCards(admin),
       fetchRespondedFreelancerCards(admin),
+      fetchGmailCards(admin),
       admin.from("agent_dismissed").select("card_id"),
     ]);
 
   const dismissedIds = new Set((dismissedRows.data ?? []).map((r: { card_id: string }) => r.card_id));
 
-  const all = [...orderCards, ...pendingStudioCards, ...stuckLeadCards, ...respondedFreelancerCards];
+  const all = [...orderCards, ...pendingStudioCards, ...stuckLeadCards, ...respondedFreelancerCards, ...gmailCards];
 
   if (opts.includeHidden) {
     return {
