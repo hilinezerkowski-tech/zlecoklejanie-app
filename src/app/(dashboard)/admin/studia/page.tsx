@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { AddStudioForm } from "./add-studio-form";
+import { FetchCoversButton } from "./fetch-covers-button";
 import { StudioActions } from "./studio-actions";
 import { RestoreStudioButton, StudioManage } from "./studio-manage";
 import { SearchList } from "@/components/ui/search-list";
@@ -75,9 +76,12 @@ export default async function StudiaPage({
     <div>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold">Studia</h1>
-        <span className="text-sm text-brand-chrom">
-          {studios?.length || 0} studiów
-        </span>
+        <div className="flex items-start gap-4">
+          <FetchCoversButton />
+          <span className="pt-2 text-sm text-brand-chrom">
+            {studios?.length || 0} studiów
+          </span>
+        </div>
       </div>
 
       {/* Filtry */}

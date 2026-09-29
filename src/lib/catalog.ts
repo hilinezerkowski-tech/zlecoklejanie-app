@@ -16,7 +16,7 @@ export async function getCatalogStudios(): Promise<CatalogStudio[]> {
   const { data: studios } = await supabase
     .from("studios")
     .select(
-      "id, slug, business_name, description, address, services, work_mode, specializations, provider_type, portfolio, google_rating, google_reviews_count"
+      "id, slug, business_name, description, address, services, work_mode, specializations, provider_type, portfolio, google_rating, google_reviews_count, cover_url"
     )
     .eq("status", "active")
     .is("deleted_at", null);

@@ -13,6 +13,8 @@ export type StudioCardData = {
   specializations: string[] | null;
   provider_type: "studio" | "freelancer" | null;
   portfolio: { url: string; path: string }[] | null;
+  /** og:image ze strony www studia — tylko fallback, gdy portfolio puste. */
+  cover_url?: string | null;
   google_rating: number | null;
   google_reviews_count: number | null;
   reviewAvg?: number | null;
@@ -33,7 +35,7 @@ export function StudioCard({ s }: { s: StudioCardData }) {
   if (!s.slug) return null;
   const city = cityFromAddress(s.address);
   const isFreelancer = s.provider_type === "freelancer";
-  const cover = s.portfolio?.[0]?.url || null;
+  const cover = s.portfolio?.[0]?.url || s.cover_url || null;
   // Chipy z usług słownika; stare studia bez services pokazują dotychczasowy tekst („Inne”).
   const slownik = oczyscUslugi(s.services).map(labelUslugi);
   const specs = (slownik.length > 0 ? slownik : s.specializations || []).slice(0, 3);
@@ -62,10 +64,11 @@ export function StudioCard({ s }: { s: StudioCardData }) {
             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-brand-border">
-            <span className="text-4xl font-black opacity-40">
-              {(s.business_name || "?").charAt(0).toUpperCase()}
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-brand-grafit to-brand-grafit-light">
+            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-lime text-3xl font-black text-brand-grafit">
+              Z
             </span>
+            <span className="text-xs text-brand-chrom">Zdjęcia wkrótce</span>
           </div>
         )}
         <span className="absolute left-3 top-3 rounded-full bg-brand-grafit/85 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-lime backdrop-blur">
