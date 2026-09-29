@@ -280,7 +280,9 @@ async function fetchChatCards(
     const priority: AgentPriority = PRICE_OR_JOIN_QUESTION.test(lastInbound) ? "normal" : "low";
 
     return {
-      id: `dmc:chat:${profile.label}:${chat.id}`,
+      // Id karty = czat + czas ostatniej wiadomości od nich: nowa wiadomość po naszej
+      // odpowiedzi (albo po "Później") daje nową kartę, zamiast zostać ukryta na zawsze.
+      id: `dmc:chat:${profile.label}:${chat.id}:${Date.parse(chat.last_inbound_at!) || 0}`,
       type: "dm_comment",
       priority,
       source: profile.label,
