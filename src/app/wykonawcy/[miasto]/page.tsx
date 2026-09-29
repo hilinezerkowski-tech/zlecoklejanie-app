@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { StudioCard } from "@/components/ui/studio-card";
+import { PublicFooterNote } from "@/components/ui/public-footer-note";
 import { WykonawcyFilters } from "@/components/ui/wykonawcy-filters";
 import {
   getCatalogStudios,
@@ -129,6 +130,13 @@ export default async function MiastoPage({
             Zleć wycenę
           </a>
         </section>
+
+        <div className="mt-10 border-t border-brand-border pt-4">
+          <p className="text-xs text-brand-chrom">
+            Opinie przy profilach dodają klienci portalu. Oceny z Google pokazujemy osobno i nie weryfikujemy ich.
+          </p>
+          <PublicFooterNote />
+        </div>
       </div>
 
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />

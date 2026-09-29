@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { cityFromAddress } from "@/lib/studio-location";
 import { labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 import { ReviewForm } from "./review-form";
+import { PublicFooterNote } from "@/components/ui/public-footer-note";
 
 // Publiczny profil wykonawcy: /wykonawca/{slug}
 // Dostep anonimowy — RLS „Public can view active studios" puszcza status='active'.
@@ -83,6 +84,23 @@ async function getReviews(studioId: string): Promise<Review[]> {
   return (data as Review[]) ?? [];
 }
 
+/**
+ * Data stanu oceny Google (kolumna google_rating_at, migracja 027). Osobne, odporne
+ * zapytanie: gdyby migracja nie była jeszcze odpalona, profil ma się wyświetlić bez daty,
+ * a nie zwrócić 404.
+ */
+async function getGoogleRatingDate(studioId: string): Promise<string | null> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.from("studios").select("google_rating_at").eq("id", studioId).maybeSingle();
+    if (error) return null;
+    const v = (data as { google_rating_at?: string | null } | null)?.google_rating_at;
+    return v ? new Date(v).toLocaleDateString("pl-PL") : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -134,6 +152,7 @@ export default async function WykonawcaProfilePage({
   if (!p) notFound();
 
   const reviews = await getReviews(p.id);
+  const googleRatingDate = await getGoogleRatingDate(p.id);
   const reviewsCount = reviews.length;
   const reviewsAvg = reviewsCount
     ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviewsCount
@@ -155,6 +174,8 @@ export default async function WykonawcaProfilePage({
           </a>
           <a
             href={quoteUrl}
+            data-track="profil_zlec_wycene"
+            data-slug={p.slug ?? ""}
             className="rounded-lg bg-brand-lime px-4 py-2 text-sm font-semibold text-brand-grafit hover:opacity-90"
           >
             Zleć wycenę
@@ -171,11 +192,6 @@ export default async function WykonawcaProfilePage({
             <span className="text-sm text-brand-chrom">
               ★ {reviewsAvg.toFixed(1)} ({reviewsCount}{" "}
               {reviewsCount === 1 ? "opinia" : "opinii"})
-            </span>
-          ) : typeof p.google_rating === "number" && p.google_rating > 0 ? (
-            <span className="text-sm text-brand-chrom">
-              ★ {p.google_rating.toFixed(1)}
-              {p.google_reviews_count ? ` (${p.google_reviews_count} z Google)` : ""}
             </span>
           ) : null}
         </div>
@@ -284,6 +300,9 @@ export default async function WykonawcaProfilePage({
             </p>
             <a
               href={ig}
+              data-track="profil_kontakt"
+              data-kind="instagram"
+              data-slug={p.slug ?? ""}
               target="_blank"
               rel="noopener noreferrer nofollow"
               className="mt-4 inline-flex items-center gap-2 rounded-lg border border-brand-lime px-4 py-2 text-sm font-semibold text-brand-lime hover:bg-brand-lime hover:text-brand-grafit"
@@ -298,9 +317,26 @@ export default async function WykonawcaProfilePage({
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-chrom">
             Opinie{reviewsCount ? ` (${reviewsCount})` : ""}
           </h2>
+          <p className="mb-4 text-xs leading-relaxed text-brand-chrom">
+            Opinie dodają klienci. Nie sprawdzamy, czy autor skorzystał z usługi. Każdą opinię przed publikacją
+            czyta administrator. Nie usuwamy opinii za to, że są negatywne.{" "}
+            <a href={`${SITE_URL}/regulamin.html`} className="underline">
+              Zasady w regulaminie
+            </a>
+            .
+          </p>
+          {typeof p.google_rating === "number" && p.google_rating > 0 ? (
+            <p className="mb-4 rounded-lg border border-brand-border bg-brand-grafit-light px-3 py-2 text-sm text-brand-chrom">
+              Ocena z Google: {p.google_rating.toFixed(1).replace(".", ",")}
+              {p.google_reviews_count
+                ? ` (${p.google_reviews_count} opinii${googleRatingDate ? `, stan na ${googleRatingDate}` : ""})`
+                : ""}{" "}
+              — nieweryfikowana przez nas.
+            </p>
+          ) : null}
           {reviewsCount === 0 ? (
             <p className="text-sm text-brand-chrom">
-              Ten wykonawca nie ma jeszcze opinii. Możesz być pierwszy.
+              Ten wykonawca nie ma jeszcze opinii z portalu. Możesz być pierwszy.
             </p>
           ) : (
             <div className="space-y-4">
@@ -350,6 +386,8 @@ export default async function WykonawcaProfilePage({
           </p>
           <a
             href={quoteUrl}
+            data-track="profil_zlec_wycene"
+            data-slug={p.slug ?? ""}
             className="mt-4 inline-block rounded-lg bg-brand-grafit px-5 py-3 font-semibold text-brand-kosc hover:opacity-90"
           >
             Zleć wycenę
@@ -368,6 +406,7 @@ export default async function WykonawcaProfilePage({
               Regulamin
             </a>
           </p>
+          <PublicFooterNote />
         </footer>
       </div>
       {/* Structured data — LocalBusiness */}
@@ -383,8 +422,18 @@ export default async function WykonawcaProfilePage({
               ? { address: { "@type": "PostalAddress", addressLocality: cityFromAddress(p.address), addressCountry: "PL" } }
               : {}),
             ...(p.portfolio?.[0]?.url ? { image: p.portfolio[0].url } : {}),
-            ...(typeof p.google_rating === "number" && p.google_rating > 0 && p.google_reviews_count
-              ? { aggregateRating: { "@type": "AggregateRating", ratingValue: p.google_rating, reviewCount: p.google_reviews_count } }
+            // Tylko opinie zebrane na portalu (od klientów, po moderacji). Oceny Google NIE trafiają
+            // do danych strukturalnych — Google zabrania agregowania ocen z innych serwisów.
+            ...(reviewsCount > 0
+              ? {
+                  aggregateRating: {
+                    "@type": "AggregateRating",
+                    ratingValue: Number(reviewsAvg.toFixed(1)),
+                    reviewCount: reviewsCount,
+                    bestRating: 5,
+                    worstRating: 1,
+                  },
+                }
               : {}),
           }),
         }}

@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useState, useEffect } from "react";
+import { track } from "@/lib/analytics";
 
 type Props = {
   miasta: string[];
@@ -21,6 +22,8 @@ export function WykonawcyFilters({ miasta, uslugi, hideCity }: Props) {
       for (const [k, v] of Object.entries(patch)) {
         if (v) params.set(k, v);
         else params.delete(k);
+        // Zdarzenie po zgodzie. Treści wyszukiwania („q”) nie wysyłamy — mogą zawierać dowolny tekst.
+        if (v) track("katalog_filtr", k === "q" ? { filtr: k } : { filtr: k, wartosc: v });
       }
       const qs = params.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });

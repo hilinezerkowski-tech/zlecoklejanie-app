@@ -257,6 +257,10 @@ export default async function ClientOrderDetailPage({
         )}
       </div>
 
+      <p className="text-xs text-brand-chrom mb-4">
+        Umowę zawierasz z wykonawcą — on odpowiada za wykonanie, cenę i reklamacje.
+      </p>
+
       {list.length === 0 ? (
         <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-8 text-center">
           <p className="text-brand-chrom">
