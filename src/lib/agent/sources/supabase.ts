@@ -6,7 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentCard } from "@/app/(dashboard)/admin/agent/types";
 import { cityFromAddress, citySlug } from "@/lib/studio-location";
-import { labelUslugi } from "@/lib/uslugi";
+import { labelUslugi, maUslugeCore, oczyscUslugi } from "@/lib/uslugi";
 
 const scopeLabels: Record<string, string> = {
   full: "całe auto",
@@ -148,6 +148,7 @@ type PendingStudioRow = {
   address: string | null;
   instagram: string | null;
   website: string | null;
+  services: string[] | null;
   specializations: string[] | null;
   provider_type: string | null;
   created_at: string;
@@ -158,7 +159,7 @@ export async function fetchPendingStudioCards(admin: SupabaseClient): Promise<Ag
   const { data } = await admin
     .from("studios")
     .select(
-      "id, business_name, address, instagram, website, specializations, provider_type, created_at, profile:profiles!studios_id_fkey(email, phone)"
+      "id, business_name, address, instagram, website, services, specializations, provider_type, created_at, profile:profiles!studios_id_fkey(email, phone)"
     )
     .eq("status", "pending")
     .is("deleted_at", null)
@@ -169,15 +170,17 @@ export async function fetchPendingStudioCards(admin: SupabaseClient): Promise<Ag
   return rows.map((s) => {
     const isFreelancer = s.provider_type === "freelancer";
     const hasPortfolio = Boolean(s.instagram || s.website);
-    const hasSpecializations = (s.specializations?.length ?? 0) > 0;
+    // Usługi ze słownika — bez nich aktywacja jest zablokowana (serwer + trigger 024c).
+    const hasSpecializations = maUslugeCore(s.services);
     const missing: string[] = [];
     if (!hasPortfolio) missing.push("Instagram/WWW");
-    if (!hasSpecializations) missing.push("specjalizacje");
+    if (!hasSpecializations) missing.push("usługi");
     if (!s.address) missing.push("adres");
 
     const facts = [
       `Typ: ${isFreelancer ? "wrapper mobilny" : "studio"}`,
-      `Usługi: ${hasSpecializations ? s.specializations!.join(", ") : "nie podano"}`,
+      `Usługi: ${hasSpecializations ? oczyscUslugi(s.services).map(labelUslugi).join(", ") : "nie zaznaczono"}`,
+      ...(s.specializations?.length ? [`Inne (opis): ${s.specializations.join(", ")}`] : []),
       s.instagram ? `Instagram: @${s.instagram}` : s.website ? `WWW: ${s.website}` : "Portfolio: brak",
       `Kontakt: ${[s.profile?.email, s.profile?.phone].filter(Boolean).join(", ") || "brak"}`,
       missing.length > 0 ? `Braki w profilu: ${missing.join(", ")}` : "Profil kompletny",
@@ -186,7 +189,7 @@ export async function fetchPendingStudioCards(admin: SupabaseClient): Promise<Ag
     const suggestion =
       hasPortfolio && hasSpecializations
         ? "Profil wygląda kompletnie — aktywuj konto."
-        : "Brak portfolio albo specjalizacji — poproś o uzupełnienie przed aktywacją.";
+        : "Brak portfolio albo zaznaczonych usług — poproś o uzupełnienie przed aktywacją.";
 
     const actions: AgentCard["actions"] = [];
     if (hasPortfolio && hasSpecializations) {
@@ -194,10 +197,15 @@ export async function fetchPendingStudioCards(admin: SupabaseClient): Promise<Ag
     } else {
       actions.push({
         kind: "request_info",
-        label: "Poproś o portfolio",
+        label: hasPortfolio ? "Poproś o usługi" : "Poproś o uzupełnienie",
         primary: true,
         payload: { studioId: s.id },
-        draft: `Cześć${s.business_name ? " " + s.business_name : ""}, dzięki za rejestrację na ZlecOklejanie.pl. Żeby aktywować konto, podeślij proszę link do Instagrama albo swojej strony z realizacjami. Odpisz na tego maila i aktywuję konto tego samego dnia.`,
+        draft: `Cześć${s.business_name ? " " + s.business_name : ""}, dzięki za rejestrację na ZlecOklejanie.pl. Żeby aktywować konto, ${[
+          !hasPortfolio && "podeślij proszę link do Instagrama albo swojej strony z realizacjami",
+          !hasSpecializations && "zaznacz w panelu (Mój profil → Usługi), co robisz — po tym dobieramy zlecenia",
+        ]
+          .filter(Boolean)
+          .join(" i ")}. Odpisz na tego maila i aktywuję konto tego samego dnia.`,
       });
     }
     actions.push({

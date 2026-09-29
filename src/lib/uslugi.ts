@@ -87,6 +87,49 @@ export function maUslugeCore(services: readonly string[] | null | undefined): bo
   return (services ?? []).some((s) => (CORE_CODES as readonly string[]).includes(s));
 }
 
+/** Komunikat walidacji — ten sam w panelu admina, profilu studia i onboardingu. */
+export const BLAD_BRAK_USLUG = "Zaznacz co najmniej jedną usługę (sam detailing nie wystarczy).";
+
+/** Dane z formularza → poprawne kody w kolejności słownika (śmieci odrzucone). */
+export function oczyscUslugi(input: unknown): UslugaKod[] {
+  const arr = Array.isArray(input) ? input : [];
+  const set = new Set(arr.filter(isUslugaKod));
+  return KODY_USLUG.filter((k) => set.has(k));
+}
+
+/**
+ * Ta sama reguła co trigger enforce_studio_services (migracja 024c):
+ * aktywny wykonawca musi mieć usługę core, ale tylko gdy właśnie staje się
+ * aktywny albo gdy zmieniają mu się usługi. Stare, nieuzupełnione studia
+ * da się dalej edytować (np. telefon), pauzować i usuwać.
+ */
+export function naruszaWymogUslug(opts: {
+  status: string;
+  services: readonly string[];
+  poprzedniStatus?: string | null;
+  poprzednieUslugi?: readonly string[] | null;
+}): boolean {
+  if (opts.status !== "active" || maUslugeCore(opts.services)) return false;
+  if (opts.poprzedniStatus !== "active") return true;
+  const przed = [...(opts.poprzednieUslugi ?? [])].sort().join(",");
+  const po = [...opts.services].sort().join(",");
+  return przed !== po;
+}
+
+/** Dodaje/usuwa "u_klienta" w work_mode, nie ruszając innych trybów pracy. */
+export function ustawUKlienta(workMode: readonly string[] | null | undefined, uKlienta: boolean): string[] {
+  const bez = (workMode ?? []).filter((m) => m !== WORK_MODE_U_KLIENTA);
+  return uKlienta ? [...bez, WORK_MODE_U_KLIENTA] : bez;
+}
+
+/** „Inne usługi (opis)” — tekst po przecinku ↔ tablica studios.specializations. */
+export function opisNaTablice(text: string | null | undefined): string[] {
+  return (text || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 // --- landing → kody -------------------------------------------------------------------
 
 /** Małe litery, bez polskich znaków — do dopasowań tekstu z formularzy. */

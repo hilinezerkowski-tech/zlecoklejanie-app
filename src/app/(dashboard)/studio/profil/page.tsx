@@ -19,6 +19,8 @@ export default async function StudioProfilPage() {
       is_paused,
       portfolio,
       description,
+      services,
+      work_mode,
       specializations,
       foil_brands,
       instagram,

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { setStudioStatus } from "./actions";
 
 export function StudioActions({
   studioId,
@@ -17,15 +18,16 @@ export function StudioActions({
   children?: React.ReactNode;
 }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const router = useRouter();
   const supabase = createClient();
 
+  // Status przez server action — serwer pilnuje wymogu usług przy aktywacji.
   async function updateStatus(newStatus: string) {
     setLoading(true);
-    await supabase
-      .from("studios")
-      .update({ status: newStatus })
-      .eq("id", studioId);
+    setError("");
+    const res = await setStudioStatus(studioId, newStatus);
+    if (!res.ok) setError(res.error || "Nie udało się zmienić statusu.");
     router.refresh();
     setLoading(false);
   }
@@ -100,6 +102,7 @@ export function StudioActions({
         </button>
       )}
       {children}
+      {error && <p className="basis-full text-right text-xs text-red-400">{error}</p>}
     </div>
   );
 }

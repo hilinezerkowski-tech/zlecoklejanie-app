@@ -4,7 +4,7 @@ import { StudioActions } from "../studio-actions";
 import { RestoreStudioButton, StudioManage } from "../studio-manage";
 import { CopyProfileLink } from "../copy-profile-link";
 import { getStudioDetail } from "./actions";
-import { labelUslugi } from "@/lib/uslugi";
+import { WORK_MODE_U_KLIENTA, labelUslugi, maUslugeCore, oczyscUslugi } from "@/lib/uslugi";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +89,8 @@ export default async function StudioDetailPage({
     business_name: studio.business_name,
     address: studio.address,
     instagram: studio.instagram,
+    services: studio.services,
+    work_mode: studio.work_mode,
     specializations: studio.specializations,
     status: studio.status,
     email: profile?.email ?? null,
@@ -209,19 +211,34 @@ export default async function StudioDetailPage({
 
         <Card title="Oferta i zakres">
           <div className="space-y-3">
-            {studio.specializations?.length > 0 && (
-              <div>
-                <p className="text-xs text-brand-chrom mb-1">Specjalizacje</p>
+            <div>
+              <p className="text-xs text-brand-chrom mb-1">Usługi</p>
+              {maUslugeCore(studio.services) ? (
                 <div className="flex flex-wrap gap-1.5">
-                  {studio.specializations.map((s: string) => (
+                  {oczyscUslugi(studio.services).map((s) => (
                     <span
                       key={s}
                       className="px-2 py-0.5 rounded-full text-xs bg-brand-lime/10 text-brand-lime"
                     >
-                      {s}
+                      {labelUslugi(s)}
                     </span>
                   ))}
+                  {(studio.work_mode || []).includes(WORK_MODE_U_KLIENTA) && (
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-white/5 text-brand-chrom">
+                      Dojazd do klienta
+                    </span>
+                  )}
                 </div>
+              ) : (
+                <p className="text-sm text-amber-400">
+                  ⚠ Brak zaznaczonych usług — uzupełnij w „Edytuj”, inaczej studio nie pasuje do żadnego zlecenia.
+                </p>
+              )}
+            </div>
+            {studio.specializations?.length > 0 && (
+              <div>
+                <p className="text-xs text-brand-chrom mb-1">Inne usługi (opis)</p>
+                <p className="text-sm text-brand-chrom">{studio.specializations.join(", ")}</p>
               </div>
             )}
             {studio.foil_brands?.length > 0 && (

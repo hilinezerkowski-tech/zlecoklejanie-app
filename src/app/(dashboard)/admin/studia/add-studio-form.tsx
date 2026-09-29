@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createStudio } from "./actions";
 import { adresZKodem, normalizujKod } from "@/lib/kod-pocztowy";
+import { UslugiCheckboxy, type UslugiValue } from "@/components/ui/uslugi-checkboxy";
+import { BLAD_BRAK_USLUG, maUslugeCore } from "@/lib/uslugi";
+
+const PUSTE_USLUGI: UslugiValue = { services: [], uKlienta: false, inne: "" };
 
 type ProviderType = "studio" | "freelancer";
 
@@ -18,6 +22,7 @@ export function AddStudioForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [providerType, setProviderType] = useState<ProviderType>("studio");
+  const [uslugi, setUslugi] = useState<UslugiValue>(PUSTE_USLUGI);
   const router = useRouter();
 
   const [form, setForm] = useState({
@@ -30,7 +35,6 @@ export function AddStudioForm() {
     instagram_url: "",
     phone: "",
     nip: "",
-    specializations: "",
     years_experience: "",
     service_radius_km: "",
   });
@@ -53,6 +57,12 @@ export function AddStudioForm() {
       return;
     }
 
+    if (!maUslugeCore(uslugi.services)) {
+      setError(BLAD_BRAK_USLUG);
+      setLoading(false);
+      return;
+    }
+
     if (isFreelancer && !form.instagram_url) {
       setError("Link do Instagrama jest wymagany dla wrappera mobilnego.");
       setLoading(false);
@@ -67,7 +77,9 @@ export function AddStudioForm() {
       instagram_url: isFreelancer ? form.instagram_url : undefined,
       phone: form.phone,
       nip: isFreelancer ? undefined : (form.nip || undefined),
-      specializations: form.specializations,
+      services: uslugi.services,
+      u_klienta: uslugi.uKlienta,
+      specializations: uslugi.inne,
       provider_type: providerType,
       years_experience: form.years_experience ? parseInt(form.years_experience) : undefined,
       service_radius_km: form.service_radius_km ? parseInt(form.service_radius_km) : undefined,
@@ -80,8 +92,9 @@ export function AddStudioForm() {
       setForm({
         email: "", business_name: "", city: "", address: "", kod: "",
         instagram: "", instagram_url: "", phone: "", nip: "",
-        specializations: "", years_experience: "", service_radius_km: "",
+        years_experience: "", service_radius_km: "",
       });
+      setUslugi(PUSTE_USLUGI);
       setProviderType("studio");
       router.refresh();
     }
@@ -114,7 +127,11 @@ export function AddStudioForm() {
           <button
             key={opt.value}
             type="button"
-            onClick={() => setProviderType(opt.value)}
+            onClick={() => {
+              setProviderType(opt.value);
+              // Wrapper z definicji dojeżdża do klienta — domyślnie zaznaczone, do odznaczenia.
+              setUslugi((u) => ({ ...u, uKlienta: opt.value === "freelancer" }));
+            }}
             className={`flex-1 text-left px-4 py-3 rounded-xl border transition ${
               providerType === opt.value
                 ? "border-brand-lime bg-brand-lime/10"
@@ -218,12 +235,7 @@ export function AddStudioForm() {
             className="w-full px-3 py-2 bg-brand-grafit border border-brand-border rounded-xl text-sm text-brand-kosc placeholder:text-brand-chrom/40 focus:outline-none focus:border-brand-lime transition" />
         </div>
         <div className="sm:col-span-2">
-          <label className="block text-xs text-brand-chrom mb-1">
-            {providerType === "freelancer" ? "Co robisz (specjalizacje, przecinkami)" : "Specjalizacje (przecinkami)"}
-          </label>
-          <input type="text" value={form.specializations} onChange={(e) => update("specializations", e.target.value)}
-            placeholder="oklejanie, PPF, ceramika"
-            className="w-full px-3 py-2 bg-brand-grafit border border-brand-border rounded-xl text-sm text-brand-kosc placeholder:text-brand-chrom/40 focus:outline-none focus:border-brand-lime transition" />
+          <UslugiCheckboxy value={uslugi} onChange={setUslugi} disabled={loading} />
         </div>
 
         <div className="sm:col-span-2 flex items-center gap-4">

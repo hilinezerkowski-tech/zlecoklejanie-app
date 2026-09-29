@@ -26,6 +26,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { APP_URL, emailLayout, escapeHtml, isValidEmail, sendEmail } from "@/lib/email";
 import { adresZKodem } from "@/lib/kod-pocztowy";
+import { mapLandingCheckboxy, maUslugeCore, ustawUKlienta } from "@/lib/uslugi";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -48,14 +49,8 @@ const DAILY_CAP = 10;
 
 const AUTO_EVENTS = ["studio_welcome_auto", "designer_welcome_auto"];
 
-/** Checkboxy „Co robisz?" z formularza wykonawcy → specjalizacje w profilu. */
-const SERVICE_LABELS: Record<string, string> = {
-  usl_wrap: "zmiana koloru / wrap",
-  usl_ppf: "PPF",
-  usl_reklama: "oklejanie reklamowe / floty",
-  usl_szyby: "przyciemnianie szyb",
-  usl_mobilnie: "dojazd do klienta",
-};
+/** Powód pominięcia — ten sam tekst pokazuje /admin/leady przy takim leadzie. */
+export const BRAK_USLUG_REASON = "brak usług — konto nie utworzone";
 
 /**
  * Pole formularza to „Instagram lub strona WWW" — rozdzielamy je na dwie kolumny.
@@ -121,6 +116,14 @@ export async function autoOnboardLead(
     return { done: false, kind, reason: "grafik bez linku do portfolio" };
   }
 
+  // Checkboxy „Co robisz?” → kody słownika (stare usl_wrap… i nowe usl_<kod>).
+  // Studio bez usługi nie dostałoby żadnego zlecenia — konta NIE zakładamy,
+  // lead zostaje w /admin/leady („brak usług — konto nie utworzone”).
+  const uslugi = mapLandingCheckboxy(p);
+  if (kind === "studio" && !maUslugeCore(uslugi.services)) {
+    return { done: false, kind, reason: BRAK_USLUG_REASON };
+  }
+
   // Istniejącego konta nie ruszamy — ani admina, ani klienta, ani wykonawcy.
   const { data: existing } = await admin
     .from("profiles")
@@ -160,9 +163,6 @@ export async function autoOnboardLead(
 
   if (kind === "studio") {
     const { instagram, website } = splitPortfolio(p.instagram);
-    const specializations = Object.keys(SERVICE_LABELS)
-      .filter((k) => p[k])
-      .map((k) => SERVICE_LABELS[k]);
 
     const { error: studioErr } = await admin.from("studios").upsert(
       {
@@ -171,7 +171,8 @@ export async function autoOnboardLead(
         address: adresZKodem(p.miasto, p.kod_pocztowy) || null,
         instagram,
         website,
-        specializations,
+        services: uslugi.services,
+        work_mode: ustawUKlienta([], uslugi.uKlienta),
         status: "pending",
       },
       { onConflict: "id" }

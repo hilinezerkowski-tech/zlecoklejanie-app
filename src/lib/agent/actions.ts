@@ -10,6 +10,7 @@ import { isValidEmail } from "@/lib/email";
 import { sendAssignedEmail } from "@/lib/notify-assigned";
 import { sendStudioWelcome } from "@/lib/studio-welcome";
 import { sendDesignerWelcome } from "@/lib/designer-welcome";
+import { BLAD_BRAK_USLUG, maUslugeCore } from "@/lib/uslugi";
 import { sendStudioMessage } from "@/app/(dashboard)/admin/studia/actions";
 import { sendGmailReply } from "@/lib/agent/sources/gmail";
 import { sendSocialReply, type SocialReplyTarget } from "@/lib/agent/sources/postproxy";
@@ -121,12 +122,13 @@ async function activateStudio(admin: AdminClient, p?: Record<string, unknown>): 
   if (!UUID.test(studioId)) return fail("Brak poprawnego id studia.");
 
   const [{ data: studio }, { data: profile }] = await Promise.all([
-    admin.from("studios").select("id, business_name, status, provider_type, deleted_at").eq("id", studioId).maybeSingle(),
+    admin.from("studios").select("id, business_name, status, provider_type, deleted_at, services").eq("id", studioId).maybeSingle(),
     admin.from("profiles").select("email").eq("id", studioId).maybeSingle(),
   ]);
   if (!studio) return fail("Nie znaleziono studia.");
   if (studio.deleted_at) return fail("Studio jest usunięte.");
   if (studio.status === "active") return fail("Studio jest już aktywne.");
+  if (!maUslugeCore(studio.services)) return fail(`${BLAD_BRAK_USLUG} Uzupełnij usługi w /admin/studia.`);
   const email = (profile?.email || "").trim();
   if (!isValidEmail(email)) return fail("Studio nie ma poprawnego e-maila — bez adresu nie ma komu wysłać powitania.");
 

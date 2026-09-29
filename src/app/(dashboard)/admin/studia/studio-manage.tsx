@@ -8,12 +8,17 @@ import {
   updateStudio,
   type StudioMessageInput,
 } from "./actions";
+import { UslugiCheckboxy, type UslugiValue } from "@/components/ui/uslugi-checkboxy";
+import { WORK_MODE_U_KLIENTA, oczyscUslugi } from "@/lib/uslugi";
 
 export type ManagedStudio = {
   id: string;
   business_name: string | null;
   address: string | null;
   instagram: string | null;
+  services: string[] | null;
+  work_mode: string[] | null;
+  /** „Inne usługi (opis)”. */
   specializations: string[] | null;
   status: string;
   email: string | null;
@@ -88,8 +93,12 @@ export function StudioManage({ studio }: { studio: ManagedStudio }) {
     email: studio.email || "",
     phone: studio.phone || "",
     instagram: studio.instagram || "",
-    specializations: (studio.specializations || []).join(", "),
     status: studio.status,
+  });
+  const [uslugi, setUslugi] = useState<UslugiValue>({
+    services: oczyscUslugi(studio.services),
+    uKlienta: (studio.work_mode || []).includes(WORK_MODE_U_KLIENTA),
+    inne: (studio.specializations || []).join(", "),
   });
   const [msg, setMsg] = useState<StudioMessageInput>({
     subject: "",
@@ -107,7 +116,12 @@ export function StudioManage({ studio }: { studio: ManagedStudio }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const res = await updateStudio(studio.id, form);
+    const res = await updateStudio(studio.id, {
+      ...form,
+      services: uslugi.services,
+      u_klienta: uslugi.uKlienta,
+      specializations: uslugi.inne,
+    });
     setLoading(false);
     if (!res.ok) return setError(res.error || "Nieznany błąd.");
     setModal(null);
@@ -222,14 +236,7 @@ export function StudioManage({ studio }: { studio: ManagedStudio }) {
               </select>
             </div>
             <div className="sm:col-span-2">
-              <label className={labelCls}>Specjalizacje (oddzielone przecinkami)</label>
-              <input
-                type="text"
-                value={form.specializations}
-                onChange={(e) => setForm({ ...form, specializations: e.target.value })}
-                placeholder="oklejanie, PPF, ceramika, detailing"
-                className={inputCls}
-              />
+              <UslugiCheckboxy value={uslugi} onChange={setUslugi} disabled={loading} />
             </div>
             <div className="sm:col-span-2 flex items-center gap-4">
               <button

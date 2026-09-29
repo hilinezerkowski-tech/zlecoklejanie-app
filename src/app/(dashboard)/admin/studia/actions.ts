@@ -12,6 +12,14 @@ import {
   sendEmailResult,
 } from "@/lib/email";
 import { sendStudioWelcome } from "@/lib/studio-welcome";
+import {
+  BLAD_BRAK_USLUG,
+  maUslugeCore,
+  naruszaWymogUslug,
+  oczyscUslugi,
+  opisNaTablice,
+  ustawUKlienta,
+} from "@/lib/uslugi";
 
 export type CreateStudioInput = {
   email: string;
@@ -21,6 +29,11 @@ export type CreateStudioInput = {
   instagram_url?: string;
   phone?: string;
   nip?: string;
+  /** Kody ze słownika (src/lib/uslugi.ts) — min. 1 usługa core. */
+  services: string[];
+  /** Dojazd do klienta → work_mode "u_klienta". */
+  u_klienta?: boolean;
+  /** „Inne usługi (opis)”, po przecinku — tylko do profilu. */
   specializations?: string;
   provider_type?: "studio" | "freelancer";
   years_experience?: number;
@@ -65,6 +78,10 @@ export async function createStudio(
   if (!email || !businessName) {
     return { ok: false, error: "Email i nazwa firmy są wymagane." };
   }
+  // Wykonawca dodany przez admina jest od razu aktywny — bez usług nie trafiłby
+  // do żadnego zlecenia (i zablokowałby go trigger 024c).
+  const services = oczyscUslugi(input.services);
+  if (!maUslugeCore(services)) return { ok: false, error: BLAD_BRAK_USLUG };
 
   const admin = createAdminClient();
 
@@ -123,10 +140,10 @@ export async function createStudio(
     .eq("id", userId);
 
   // 4. Utwórz/aktualizuj rekord studia — od razu aktywne (dodane przez admina).
-  const specializations = (input.specializations || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const specializations = opisNaTablice(input.specializations);
+  // Istniejący wiersz (np. promowany profil) — zachowujemy jego inne tryby pracy.
+  const { data: prev } = await admin.from("studios").select("work_mode").eq("id", userId).maybeSingle();
+  const workMode = ustawUKlienta(prev?.work_mode, Boolean(input.u_klienta));
 
   const { error: studioErr } = await admin.from("studios").upsert(
     {
@@ -136,6 +153,8 @@ export async function createStudio(
       instagram: (input.instagram || input.instagram_url)?.replace("@", "").trim() || null,
       instagram_url: input.instagram_url?.trim() || null,
       nip: input.nip?.trim() || null,
+      services,
+      work_mode: workMode,
       specializations,
       status: "active",
       provider_type: input.provider_type ?? "studio",
@@ -202,6 +221,9 @@ export type UpdateStudioInput = {
   email: string;
   phone?: string;
   instagram?: string;
+  services: string[];
+  u_klienta: boolean;
+  /** „Inne usługi (opis)”, po przecinku. */
   specializations?: string;
   status: string;
 };
@@ -238,6 +260,23 @@ export async function updateStudio(
     .maybeSingle();
   if (!profile) return { ok: false, error: "Nie znaleziono profilu studia." };
 
+  const services = oczyscUslugi(input.services);
+  const { data: prev } = await admin
+    .from("studios")
+    .select("status, services, work_mode")
+    .eq("id", studioId)
+    .maybeSingle();
+  if (
+    naruszaWymogUslug({
+      status: input.status,
+      services,
+      poprzedniStatus: prev?.status,
+      poprzednieUslugi: prev?.services,
+    })
+  ) {
+    return { ok: false, error: BLAD_BRAK_USLUG };
+  }
+
   if (email !== (profile.email || "").toLowerCase()) {
     const { data: taken } = await admin
       .from("profiles")
@@ -268,10 +307,7 @@ export async function updateStudio(
     return { ok: false, error: `Błąd zapisu kontaktu: ${profileErr.message}` };
   }
 
-  const specializations = (input.specializations || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const specializations = opisNaTablice(input.specializations);
 
   const { error: studioErr } = await admin
     .from("studios")
@@ -279,6 +315,8 @@ export async function updateStudio(
       business_name: businessName,
       address: input.address?.trim() || null,
       instagram: input.instagram?.replace("@", "").trim() || null,
+      services,
+      work_mode: ustawUKlienta(prev?.work_mode, input.u_klienta),
       specializations,
       status: input.status,
     })
@@ -289,6 +327,45 @@ export async function updateStudio(
 
   revalidatePath("/admin/studia");
   return { ok: true, message: "Zapisano." };
+}
+
+/**
+ * Zmiana statusu z przycisków na karcie (Aktywuj / Odrzuć / Zawieś).
+ * Dotąd zapis szedł z przeglądarki; teraz serwer pilnuje wymogu usług
+ * przy aktywacji (ta sama reguła co trigger 024c).
+ */
+export async function setStudioStatus(
+  studioId: string,
+  status: string
+): Promise<StudioActionResult> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+  if (!STUDIO_STATUSES.includes(status)) return { ok: false, error: "Nieznany status." };
+
+  const admin = createAdminClient();
+  const { data: prev } = await admin
+    .from("studios")
+    .select("status, services")
+    .eq("id", studioId)
+    .maybeSingle();
+  if (!prev) return { ok: false, error: "Nie znaleziono studia." };
+  if (
+    naruszaWymogUslug({
+      status,
+      services: prev.services ?? [],
+      poprzedniStatus: prev.status,
+      poprzednieUslugi: prev.services,
+    })
+  ) {
+    return { ok: false, error: `${BLAD_BRAK_USLUG} Uzupełnij usługi w „Edytuj”.` };
+  }
+
+  const { error } = await admin.from("studios").update({ status }).eq("id", studioId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/admin/studia");
+  revalidatePath(`/admin/studia/${studioId}`);
+  return { ok: true };
 }
 
 /**
