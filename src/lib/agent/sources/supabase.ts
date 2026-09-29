@@ -231,6 +231,74 @@ export async function fetchPendingStudioCards(admin: SupabaseClient): Promise<Ag
   });
 }
 
+type PendingDesignerRow = {
+  id: string;
+  display_name: string | null;
+  city: string | null;
+  portfolio_url: string | null;
+  instagram: string | null;
+  specializations: string[] | null;
+  works_on_vehicle_templates: boolean | null;
+  price_from: number | null;
+  price_to: number | null;
+  monthly_capacity: number | null;
+  created_at: string;
+  profile: { email: string | null; phone: string | null } | null;
+};
+
+/**
+ * Graficy po auto-onboardingu (src/lib/onboarding.ts) zostają na status='pending'
+ * do ręcznej weryfikacji portfolio — tak samo jak studia.
+ */
+export async function fetchPendingDesignerCards(admin: SupabaseClient): Promise<AgentCard[]> {
+  const { data } = await admin
+    .from("designers")
+    .select(
+      "id, display_name, city, portfolio_url, instagram, specializations, works_on_vehicle_templates, price_from, price_to, monthly_capacity, created_at, profile:profiles!designers_id_fkey(email, phone)"
+    )
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+
+  const rows = (data ?? []) as unknown as PendingDesignerRow[];
+
+  return rows.map((d) => {
+    const hasPortfolio = Boolean(d.portfolio_url || d.instagram);
+    const price =
+      d.price_from || d.price_to ? `${d.price_from ?? "?"}–${d.price_to ?? "?"} zł` : "nie podano";
+
+    const facts = [
+      "Typ: grafik",
+      d.portfolio_url ? `Portfolio: ${d.portfolio_url}` : d.instagram ? `Instagram: @${d.instagram}` : "Portfolio: brak",
+      `Specjalizacje: ${d.specializations?.length ? d.specializations.join(", ") : "nie podano"}`,
+      `Szablony pojazdów: ${d.works_on_vehicle_templates ? "TAK" : "nie zaznaczono"}`,
+      `Widełki za projekt: ${price}`,
+      `Przepustowość: ${d.monthly_capacity ? `${d.monthly_capacity} projektów/mies.` : "nie podano"}`,
+      `Kontakt: ${[d.profile?.email, d.profile?.phone].filter(Boolean).join(", ") || "brak"}`,
+    ];
+
+    const actions: AgentCard["actions"] = [];
+    if (hasPortfolio) {
+      actions.push({ kind: "activate_designer", label: "Aktywuj grafika", primary: true, payload: { designerId: d.id } });
+    }
+    actions.push({ kind: "open", label: "Zobacz w panelu", href: "/admin/graficy?status=pending" });
+    actions.push({ kind: "dismiss", label: "Później" });
+
+    return {
+      id: `designer:${d.id}`,
+      type: "new_studio",
+      priority: hasPortfolio ? "normal" : "low",
+      source: "Supabase",
+      occurredAt: d.created_at,
+      title: `${d.display_name || "Bez nazwy"} — nowa rejestracja grafika${d.city ? ", " + d.city : ""}`,
+      facts,
+      suggestion: hasPortfolio
+        ? "Obejrzyj portfolio — jeśli prace dotyczą oklejania pojazdów, aktywuj konto."
+        : "Brak portfolio — bez prac nie kierujemy briefów. Napisz do grafika z prośbą o link.",
+      actions,
+    } satisfies AgentCard;
+  });
+}
+
 type StuckLeadRow = {
   id: string;
   kind: string;

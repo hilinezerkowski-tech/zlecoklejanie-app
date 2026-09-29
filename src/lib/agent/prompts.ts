@@ -5,7 +5,7 @@ import type { AgentCard } from "@/app/(dashboard)/admin/agent/types";
 
 const TYPE_LABEL: Record<AgentCard["type"], string> = {
   new_order: "nowe zlecenie klienta bez przypisanego studia",
-  new_studio: "rejestracja wykonawcy czekająca na decyzję",
+  new_studio: "rejestracja wykonawcy albo grafika czekająca na decyzję",
   email: "mail w skrzynce kontakt@",
   dm_comment: "komentarz lub wiadomość prywatna z Facebooka/Instagrama",
 };

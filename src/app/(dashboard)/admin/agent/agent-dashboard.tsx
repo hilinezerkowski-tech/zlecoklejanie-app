@@ -22,13 +22,21 @@ const TYPE_META: Record<
 const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 } as const;
 
 /** Akcje wykonywane przez serwer. */
-const EXECUTABLE: AgentActionKind[] = ["assign_studio", "activate_studio", "request_info", "reply_email", "reply_social"];
+const EXECUTABLE: AgentActionKind[] = [
+  "assign_studio",
+  "activate_studio",
+  "activate_designer",
+  "request_info",
+  "reply_email",
+  "reply_social",
+];
 /** Akcje, które wysyłają napisaną treść — bez treści nie ruszamy. */
 const NEEDS_DRAFT: AgentActionKind[] = ["request_info", "reply_email", "reply_social"];
 
 const CONFIRM_TEXT: Partial<Record<AgentActionKind, string>> = {
   assign_studio: "Przypisać studio do zlecenia? Studio dostanie maila z zapytaniem do wyceny.",
   activate_studio: "Aktywować konto? Wykonawca dostanie mail powitalny z linkiem do panelu i zacznie dostawać zlecenia.",
+  activate_designer: "Aktywować grafika? Dostanie mail powitalny z linkiem do panelu i zacznie dostawać briefy.",
   request_info: "Wysłać tego maila do wykonawcy (nadawca: kontakt@zlecoklejanie.pl)?",
   reply_email: "Wysłać odpowiedź w tym wątku (nadawca: kontakt@zlecoklejanie.pl)?",
   reply_social: "Opublikować tę odpowiedź na Facebooku/Instagramie?",

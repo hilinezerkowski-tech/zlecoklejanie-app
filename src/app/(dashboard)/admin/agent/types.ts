@@ -8,6 +8,7 @@ export type AgentPriority = "high" | "normal" | "low";
 export type AgentActionKind =
   | "assign_studio" // przypisz studio do zlecenia
   | "activate_studio" // aktywuj konto wykonawcy
+  | "activate_designer" // aktywuj konto grafika
   | "request_info" // poproś wykonawcę o brakujące dane
   | "reply_email" // wyślij odpowiedź mailem
   | "reply_social" // odpowiedz na komentarz / DM

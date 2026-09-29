@@ -3,6 +3,7 @@ import type { AgentCard, AgentFeed } from "@/app/(dashboard)/admin/agent/types";
 import {
   fetchNewOrderCards,
   fetchPendingStudioCards,
+  fetchPendingDesignerCards,
   fetchStuckLandingLeadCards,
   fetchRespondedFreelancerCards,
 } from "@/lib/agent/sources/supabase";
@@ -44,6 +45,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
   const [
     orderCards,
     pendingStudioCards,
+    pendingDesignerCards,
     stuckLeadCards,
     respondedFreelancerCards,
     gmailCards,
@@ -52,6 +54,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
   ] = await Promise.all([
     fetchNewOrderCards(admin),
     fetchPendingStudioCards(admin),
+    fetchPendingDesignerCards(admin),
     fetchStuckLandingLeadCards(admin),
     fetchRespondedFreelancerCards(admin),
     fetchGmailCards(admin),
@@ -66,6 +69,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
   const all = [
     ...orderCards,
     ...pendingStudioCards,
+    ...pendingDesignerCards,
     ...stuckLeadCards,
     ...respondedFreelancerCards,
     ...gmailCards,
