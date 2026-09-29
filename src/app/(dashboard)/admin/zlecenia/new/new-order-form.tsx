@@ -3,14 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createOrderAsAdmin, type CreateOrderInput } from "../[id]/actions";
+import { USLUGI_ZLECEN } from "@/lib/uslugi";
 
-const SERVICE_OPTIONS = [
-  { value: "oklejanie", label: "Oklejanie" },
-  { value: "ppf", label: "PPF" },
-  { value: "branding", label: "Branding" },
-  { value: "grafika", label: "Grafika" },
-  { value: "inne", label: "Inne" },
-];
+const SERVICE_OPTIONS = USLUGI_ZLECEN.map((u) => ({ value: u.kod, label: u.etykieta }));
 
 const SCOPE_OPTIONS = [
   { value: "full", label: "Cały pojazd" },
@@ -32,7 +27,7 @@ export function NewOrderForm() {
     email: "",
     full_name: "",
     phone: "",
-    service_type: "oklejanie",
+    service_type: "zmiana_koloru",
     scope: "full",
     city: "",
     car_brand: "",

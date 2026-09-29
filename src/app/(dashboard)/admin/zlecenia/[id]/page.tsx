@@ -17,6 +17,7 @@ import {
   MAX_GRAFIKOW,
   NeedsDesignerToggle,
 } from "./designer-section";
+import { labelUslugi } from "@/lib/uslugi";
 
 export default async function OrderDetailPage({
   params,
@@ -161,14 +162,6 @@ export default async function OrderDetailPage({
     (d: any) => !przypisaniGraficy.includes(d.id)
   );
 
-  const serviceLabels: Record<string, string> = {
-    oklejanie: "Oklejanie",
-    ppf: "PPF",
-    branding: "Branding",
-    grafika: "Grafika",
-    inne: "Inne",
-  };
-
   const scopeLabels: Record<string, string> = {
     full: "Całe auto",
     full_wneki: "Całe auto + wnęki",
@@ -234,7 +227,7 @@ export default async function OrderDetailPage({
             ← Zlecenia
           </a>
           <h1 className="text-2xl font-bold">
-            {serviceLabels[order.service_type] || order.service_type}
+            {labelUslugi(order.service_type)}
             {order.car_brand && ` — ${order.car_brand} ${order.car_model || ""}`}
           </h1>
         </div>
@@ -273,7 +266,7 @@ export default async function OrderDetailPage({
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between">
               <dt className="text-brand-chrom">Usługa</dt>
-              <dd>{serviceLabels[order.service_type]}</dd>
+              <dd>{labelUslugi(order.service_type)}</dd>
             </div>
             {order.scope && (
               <div className="flex justify-between">

@@ -1,14 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { labelUslugi } from "@/lib/uslugi";
 
-// Etykiety usług i zakresu — spójne z panelem admina
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "Folia PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
-};
+// Etykiety zakresu — spójne z panelem admina (usługi: labelUslugi)
 
 // Status przypisania widziany oczami studia
 const assignmentStatus: Record<string, { label: string; color: string }> = {
@@ -88,7 +82,7 @@ export default async function StudioOrdersPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-medium">
-                      {serviceLabels[order.service_type] || order.service_type}
+                      {labelUslugi(order.service_type)}
                       {order.car_brand &&
                         ` — ${order.car_brand} ${order.car_model || ""}`}
                     </p>

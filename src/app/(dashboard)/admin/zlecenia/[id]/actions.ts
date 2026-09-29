@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendAssignedEmail } from "@/lib/notify-assigned";
 import { etykietaZlecenia, sendDesignerBrief } from "@/lib/designer-brief";
 import { isValidEmail } from "@/lib/email";
+import { isUslugaZlecenia } from "@/lib/uslugi";
 
 type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -369,7 +370,6 @@ export async function unassignDesigner(
 // FAZA A3 — edycja danych zlecenia i kontaktu klienta (tylko admin)
 // =========================================================
 
-const ORDER_SERVICES = ["oklejanie", "ppf", "branding", "grafika", "inne"] as const;
 const ORDER_SCOPES = ["full", "full_wneki", "partial", "front"] as const;
 
 export type UpdateOrderInput = {
@@ -407,7 +407,7 @@ export async function updateOrderDetails(
   const auth = await requireAdmin();
   if (!auth.ok) return auth;
 
-  if (!(ORDER_SERVICES as readonly string[]).includes(input.service_type)) {
+  if (!isUslugaZlecenia(input.service_type)) {
     return { ok: false, error: "Nieznana usługa." };
   }
   const scope = input.scope ? input.scope : null;
@@ -646,7 +646,7 @@ export async function createOrderAsAdmin(
   const email = input.email.trim().toLowerCase();
   if (!isValidEmail(email)) return { ok: false, error: "Podaj prawidłowy e-mail klienta." };
   if (!input.city.trim()) return { ok: false, error: "Miasto jest wymagane." };
-  if (!input.service_type) return { ok: false, error: "Rodzaj usługi jest wymagany." };
+  if (!isUslugaZlecenia(input.service_type)) return { ok: false, error: "Wybierz rodzaj usługi." };
 
   // Znajdź lub utwórz profil klienta
   const { data: existing } = await admin

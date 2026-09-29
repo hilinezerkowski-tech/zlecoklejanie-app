@@ -7,15 +7,7 @@ import { ChooseQuoteButton } from "./choose-quote-button";
 import { ChooseDesignerButton } from "./choose-designer-button";
 import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
-
-// Etykiety spojne z pozostalymi panelami
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "Folia PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
-};
+import { labelUslugi } from "@/lib/uslugi";
 
 const scopeLabels: Record<string, string> = {
   full: "Całe auto",
@@ -181,7 +173,7 @@ export default async function ClientOrderDetailPage({
 
       <div className="flex items-center gap-3 mt-3 mb-1">
         <h1 className="text-2xl font-bold">
-          {serviceLabels[order.service_type] || order.service_type}
+          {labelUslugi(order.service_type)}
           {order.car_brand && ` — ${order.car_brand} ${order.car_model || ""}`}
         </h1>
         <span
@@ -200,7 +192,7 @@ export default async function ClientOrderDetailPage({
         <h2 className="font-semibold mb-2">Szczegóły zlecenia</h2>
         <Detail
           label="Usługa"
-          value={serviceLabels[order.service_type] || order.service_type}
+          value={labelUslugi(order.service_type)}
         />
         {(order.car_brand || order.car_model) && (
           <Detail

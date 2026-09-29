@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { SearchList } from "@/components/ui/search-list";
+import { labelUslugi } from "@/lib/uslugi";
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   new: { label: "Nowe", color: "bg-amber-400/15 text-amber-400" },
@@ -9,14 +10,6 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   chosen: { label: "Wybrane", color: "bg-brand-lime/15 text-brand-lime" },
   completed: { label: "Zakończone", color: "bg-teal-400/15 text-teal-400" },
   cancelled: { label: "Anulowane", color: "bg-red-400/15 text-red-400" },
-};
-
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
 };
 
 export default async function ZleceniaPage({
@@ -149,7 +142,7 @@ export default async function ZleceniaPage({
                   >
                     <td className="px-6 py-4 text-sm">
                       <span className="flex items-center gap-2">
-                        {serviceLabels[order.service_type] || order.service_type}
+                        {labelUslugi(order.service_type)}
                         {order.needs_designer && (
                           <span
                             title="Klient chce, żebyśmy dobrali grafika"
@@ -205,7 +198,7 @@ export default async function ZleceniaPage({
                 return {
                   key: order.id,
                   text: [
-                    serviceLabels[order.service_type] || order.service_type,
+                    labelUslugi(order.service_type),
                     order.car_brand,
                     order.car_model,
                     order.city,

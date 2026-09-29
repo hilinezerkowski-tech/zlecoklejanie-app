@@ -1,14 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-
-// Etykiety usług — spójne z listą zleceń studia
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "Folia PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
-};
+import { labelUslugi } from "@/lib/uslugi";
 
 export default async function StudioDashboard() {
   const supabase = await createClient();
@@ -154,8 +146,7 @@ export default async function StudioDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">
-                    {serviceLabels[a.order.service_type] ||
-                      a.order.service_type}
+                    {labelUslugi(a.order.service_type)}
                     {a.order.car_brand &&
                       ` — ${a.order.car_brand} ${a.order.car_model || ""}`}
                   </p>

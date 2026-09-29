@@ -1,5 +1,6 @@
 import { APP_URL, escapeHtml, sendEmailResult, type SendEmailResult } from "@/lib/email";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { labelUslugi } from "@/lib/uslugi";
 
 /**
  * Brief dla grafika — jedno miejsce na tresc domyslna i na wysylke maila.
@@ -11,14 +12,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *  - domyslny brief jest czyszczony z linii wygladajacych na kontakt
  *    (`convertLeadToOrder` dopisuje do opisu m.in. "Telefon: ...").
  */
-
-const SERVICE_LABELS: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "Folia PPF",
-  branding: "Branding / reklama na aucie",
-  grafika: "Projekt graficzny",
-  inne: "Inne",
-};
 
 const SCOPE_LABELS: Record<string, string> = {
   full: "całe auto",
@@ -63,7 +56,7 @@ export function etykietaZlecenia(o: {
  */
 export function domyslnyBrief(o: BriefOrder): string {
   const linie: string[] = [];
-  linie.push(`Usługa: ${SERVICE_LABELS[o.service_type] || o.service_type}`);
+  linie.push(`Usługa: ${labelUslugi(o.service_type)}`);
 
   const auto = [o.car_brand, o.car_model, o.car_year].filter(Boolean).join(" ");
   if (auto) linie.push(`Pojazd: ${auto}`);

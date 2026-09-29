@@ -4,6 +4,7 @@ import { StudioActions } from "../studio-actions";
 import { RestoreStudioButton, StudioManage } from "../studio-manage";
 import { CopyProfileLink } from "../copy-profile-link";
 import { getStudioDetail } from "./actions";
+import { labelUslugi } from "@/lib/uslugi";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +22,6 @@ const orderStatusMeta: Record<string, { label: string; cls: string }> = {
   chosen: { label: "Wybrane", cls: "bg-violet-400/15 text-violet-400" },
   completed: { label: "Ukończone", cls: "bg-emerald-400/15 text-emerald-400" },
   cancelled: { label: "Anulowane", cls: "bg-red-400/15 text-red-400" },
-};
-
-const serviceLabels: Record<string, string> = {
-  oklejanie: "Oklejanie",
-  ppf: "PPF",
-  branding: "Branding",
-  grafika: "Grafika",
-  inne: "Inne",
 };
 
 function Badge({ children, cls }: { children: React.ReactNode; cls: string }) {
@@ -296,7 +289,7 @@ export default async function StudioDetailPage({
                       </Link>
                       <span className="text-brand-chrom">·</span>
                       <span className="text-brand-chrom">
-                        {serviceLabels[ord.service_type] ?? ord.service_type}
+                        {labelUslugi(ord.service_type)}
                       </span>
                       {ord.car_brand && (
                         <>

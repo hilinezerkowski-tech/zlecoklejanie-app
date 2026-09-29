@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createStudio } from "../studia/actions";
 import { createDesigner } from "../graficy/actions";
 import { adresZKodem, normalizujKod } from "@/lib/kod-pocztowy";
+import { mapLandingUsluga } from "@/lib/uslugi";
 
 export type LeadActionResult = {
   ok: boolean;
@@ -13,21 +14,6 @@ export type LeadActionResult = {
   message?: string;
   orderId?: string;
 };
-
-/**
- * Mapowanie etykiet z formularza na landing page (select "usluga")
- * na enum `service_type` w bazie.
- */
-function mapServiceType(usluga: string | undefined): string {
-  const s = (usluga || "").toLowerCase();
-  if (s.includes("ppf")) return "ppf";
-  if (s.includes("projekt graficzny")) return "grafika";
-  if (s.includes("reklamow") || s.includes("branding")) return "branding";
-  if (s.includes("wrap") || s.includes("kolor") || s.includes("detale"))
-    return "oklejanie";
-  if (s.includes("inne")) return "inne";
-  return "oklejanie";
-}
 
 /** "BMW X5 G05 2023" -> { brand: "BMW", model: "X5 G05 2023", year: 2023 } */
 function parseCar(auto: string | undefined) {
@@ -140,7 +126,7 @@ export async function convertLeadToOrder(leadId: string): Promise<LeadActionResu
     .from("orders")
     .insert({
       client_id: clientId,
-      service_type: mapServiceType(p.usluga),
+      service_type: mapLandingUsluga(p.usluga),
       car_brand: car.brand,
       car_model: car.model,
       car_year: car.year,

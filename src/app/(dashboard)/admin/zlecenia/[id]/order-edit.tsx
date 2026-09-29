@@ -3,19 +3,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateOrderDetails, updateOrderClient } from "./actions";
+import { USLUGI_ZLECEN, normalizujUslugeZlecenia } from "@/lib/uslugi";
 
 /*
  * Faza A3 — edycja danych zlecenia i kontaktu klienta przez admina.
  * Przycisk "Edytuj" w nagłówku kafla otwiera okno z formularzem.
  */
 
-const SERVICES: [string, string][] = [
-  ["oklejanie", "Oklejanie"],
-  ["ppf", "PPF"],
-  ["branding", "Branding"],
-  ["grafika", "Grafika"],
-  ["inne", "Inne"],
-];
+const SERVICES: [string, string][] = USLUGI_ZLECEN.map((u) => [u.kod, u.etykieta]);
 
 const SCOPES: [string, string][] = [
   ["", "— brak —"],
@@ -125,7 +120,8 @@ export function OrderDetailsEditor({ order }: { order: EditableOrder }) {
   const [error, setError] = useState<string | null>(null);
 
   const initial = () => ({
-    service_type: order.service_type,
+    // Stare "oklejanie"/"branding" (sprzed migracji 024b) → nowy kod, żeby select miał wartość.
+    service_type: normalizujUslugeZlecenia(order.service_type) ?? "inne",
     scope: order.scope ?? "",
     city: order.city ?? "",
     car_brand: order.car_brand ?? "",

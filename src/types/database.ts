@@ -1,7 +1,10 @@
+import type { UslugaKod, UslugaZlecenia } from "@/lib/uslugi";
+
 export type UserRole = "client" | "studio" | "designer" | "admin";
 export type StudioStatus = "pending" | "active" | "suspended" | "rejected";
 export type OrderStatus = "new" | "assigned" | "quoted" | "chosen" | "completed" | "cancelled";
-export type ServiceType = "oklejanie" | "ppf" | "branding" | "grafika" | "inne";
+/** Rodzaj zlecenia — kody słownika (src/lib/uslugi.ts). "oklejanie"/"branding" tylko w danych sprzed migracji 024b. */
+export type ServiceType = UslugaZlecenia | "oklejanie" | "branding";
 
 export interface Profile {
   id: string;
@@ -22,6 +25,9 @@ export interface Studio {
   nip: string | null;
   slug: string | null;
   description: string | null;
+  /** Usługi ze słownika — jedyne źródło do dobierania studiów (migracja 024a). */
+  services: UslugaKod[];
+  /** „Inne usługi (opis)” — wolny tekst tylko do profilu, nigdy do dobierania. */
   specializations: string[];
   foil_brands: string[];
   instagram: string | null;
