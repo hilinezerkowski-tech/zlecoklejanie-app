@@ -14,7 +14,14 @@ async function requireAdmin() {
   return profile?.role === "admin" ? user : null;
 }
 
-const KINDS: AgentActionKind[] = ["assign_studio", "activate_studio", "request_info", "reply_email", "reply_social"];
+const KINDS: AgentActionKind[] = [
+  "assign_studio",
+  "activate_studio",
+  "activate_designer",
+  "request_info",
+  "reply_email",
+  "reply_social",
+];
 const MAX_DRAFT = 5000;
 
 export const dynamic = "force-dynamic";

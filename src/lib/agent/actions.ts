@@ -9,6 +9,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 import { isValidEmail } from "@/lib/email";
 import { sendAssignedEmail } from "@/lib/notify-assigned";
 import { sendStudioWelcome } from "@/lib/studio-welcome";
+import { sendDesignerWelcome } from "@/lib/designer-welcome";
 import { sendStudioMessage } from "@/app/(dashboard)/admin/studia/actions";
 import { sendGmailReply } from "@/lib/agent/sources/gmail";
 import { sendSocialReply, type SocialReplyTarget } from "@/lib/agent/sources/postproxy";
@@ -130,6 +131,31 @@ async function activateStudio(admin: AdminClient, p?: Record<string, unknown>): 
   };
 }
 
+async function activateDesigner(admin: AdminClient, p?: Record<string, unknown>): Promise<AgentActionResult> {
+  const designerId = str(p, "designerId");
+  if (!UUID.test(designerId)) return fail("Brak poprawnego id grafika.");
+
+  const [{ data: designer }, { data: profile }] = await Promise.all([
+    admin.from("designers").select("id, display_name, status, portfolio_url, instagram").eq("id", designerId).maybeSingle(),
+    admin.from("profiles").select("email").eq("id", designerId).maybeSingle(),
+  ]);
+  if (!designer) return fail("Nie znaleziono grafika.");
+  if (designer.status !== "pending") return fail(`Grafik ma już status „${designer.status}” — zmiany rób w /admin/graficy.`);
+  if (!designer.portfolio_url && !designer.instagram) return fail("Grafik nie ma portfolio — bez prac nie kierujemy briefów.");
+  const email = (profile?.email || "").trim();
+  if (!isValidEmail(email)) return fail("Grafik nie ma poprawnego e-maila — bez adresu nie ma komu wysłać powitania.");
+
+  const { error } = await admin.from("designers").update({ status: "active" }).eq("id", designerId).eq("status", "pending");
+  if (error) return fail(`Błąd aktywacji: ${error.message}`);
+
+  const name = designer.display_name || "grafik";
+  const welcomeSent = await sendDesignerWelcome(admin, email, name);
+  return {
+    ok: true,
+    message: `Aktywowano grafika ${name}. Mail powitalny ${welcomeSent ? `wysłany na ${email}` : "NIE wysłany — skontaktuj się ręcznie"}.`,
+  };
+}
+
 async function requestInfo(p: Record<string, unknown> | undefined, draft: string): Promise<AgentActionResult> {
   const studioId = str(p, "studioId");
   if (!UUID.test(studioId)) return fail("Brak poprawnego id studia.");
@@ -188,6 +214,9 @@ export async function executeAgentAction(
         break;
       case "activate_studio":
         result = await activateStudio(admin, req.payload);
+        break;
+      case "activate_designer":
+        result = await activateDesigner(admin, req.payload);
         break;
       case "request_info":
         result = await requestInfo(req.payload, draft);
