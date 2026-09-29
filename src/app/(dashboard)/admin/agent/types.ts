@@ -22,6 +22,8 @@ export interface AgentAction {
   href?: string;
   /** Projekt treści do wysłania — mail lub odpowiedź na DM/komentarz */
   draft?: string;
+  /** Dane dla /api/admin/agent-action (id zlecenia, studia, wątku…). Serwer i tak je weryfikuje. */
+  payload?: Record<string, string | string[]>;
 }
 
 export interface AgentCard {

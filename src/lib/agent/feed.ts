@@ -12,6 +12,16 @@ import { enrichWithSuggestions } from "@/lib/agent/suggest";
 
 const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 } as const;
 
+type DismissedRow = { card_id: string; reason: string };
+
+async function loadDismissed(admin: ReturnType<typeof createAdminClient>): Promise<DismissedRow[]> {
+  const withReason = await admin.from("agent_dismissed").select("card_id, reason");
+  if (!withReason.error) return (withReason.data ?? []) as DismissedRow[];
+  // Przed migracją 023 kolumny reason nie ma — wszystko traktujemy jak "Później".
+  const plain = await admin.from("agent_dismissed").select("card_id");
+  return ((plain.data ?? []) as { card_id: string }[]).map((r) => ({ card_id: r.card_id, reason: "dismissed" }));
+}
+
 function sortCards(cards: AgentCard[]): AgentCard[] {
   return [...cards].sort(
     (a, b) =>
@@ -46,10 +56,12 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
     fetchRespondedFreelancerCards(admin),
     fetchGmailCards(admin),
     fetchPostproxyCards(admin),
-    admin.from("agent_dismissed").select("card_id"),
+    loadDismissed(admin),
   ]);
 
-  const dismissedIds = new Set((dismissedRows.data ?? []).map((r: { card_id: string }) => r.card_id));
+  // "done" = akcja wykonana (Faza 5) — nie wraca ani w feedzie, ani w "Pokaż ukryte".
+  const dismissedIds = new Set(dismissedRows.map((r) => r.card_id));
+  const hiddenIds = new Set(dismissedRows.filter((r) => r.reason !== "done").map((r) => r.card_id));
 
   const all = [
     ...orderCards,
@@ -63,7 +75,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
   if (opts.includeHidden) {
     return {
       generatedAt: new Date().toISOString(),
-      cards: sortCards(all.filter((c) => dismissedIds.has(c.id))),
+      cards: sortCards(all.filter((c) => hiddenIds.has(c.id))),
       hiddenCount: 0,
     };
   }
@@ -76,6 +88,8 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
   return {
     generatedAt: new Date().toISOString(),
     cards: sortCards(visible),
-    hiddenCount: dismissedIds.size,
+    // Liczymy tylko ukryte karty, które nadal istnieją w źródłach (stare wpisy po
+    // zamkniętych zleceniach nie zawyżają licznika).
+    hiddenCount: all.filter((c) => hiddenIds.has(c.id)).length,
   };
 }

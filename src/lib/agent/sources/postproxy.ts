@@ -183,7 +183,14 @@ async function fetchCommentCards(
       const priority: AgentPriority = PRICE_OR_JOIN_QUESTION.test(body) ? "normal" : "low";
       const author = c.author_username || "nieznany autor";
 
-      const actions: AgentCard["actions"] = [{ kind: "reply_social", label: "Odpowiedz", primary: true }];
+      const actions: AgentCard["actions"] = [
+        {
+          kind: "reply_social",
+          label: "Odpowiedz",
+          primary: true,
+          payload: { mode: "comment", profileId: profile.id, postId: post.id, parentId: c.external_id || c.id },
+        },
+      ];
       if (c.permalink) actions.push({ kind: "open", label: "Otwórz komentarz", href: c.permalink });
       actions.push({ kind: "dismiss", label: "Później" });
 
@@ -283,7 +290,12 @@ async function fetchChatCards(
           ? "Pyta o cenę/lokalizację/dołączenie — odpowiedz i skieruj do formularza na zlecoklejanie.pl."
           : "Wiadomość czeka na odpowiedź.",
       actions: [
-        { kind: "reply_social", label: "Odpowiedz", primary: true },
+        {
+          kind: "reply_social",
+          label: "Odpowiedz",
+          primary: true,
+          payload: { mode: "chat", profileId: profile.id, chatId: chat.id },
+        },
         { kind: "dismiss", label: "Później" },
       ],
     } satisfies AgentCard;
@@ -326,4 +338,74 @@ export async function fetchPostproxyCards(admin: SupabaseClient): Promise<AgentC
 
   cache = { at: Date.now(), cards };
   return cards;
+}
+
+// --- odpowiedź z panelu agenta (Faza 5) -------------------------------------------
+// Dokumentacja: https://postproxy.dev/reference/comments/ i /reference/direct-messages/
+
+async function ppSend<T>(path: string, key: string, body: unknown): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => "")).slice(0, 200);
+      throw new Error(`Postproxy ${res.status}${detail ? `: ${detail}` : ""}`);
+    }
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type SocialReplyTarget =
+  | { mode: "comment"; profileId: string; postId: string; parentId: string }
+  | { mode: "chat"; profileId: string; chatId: string };
+
+/**
+ * Odpowiedź pod komentarzem albo w DM — wyłącznie z kont ZlecOklejanie (lista
+ * PROFILES). Klucz Postproxy widzi też profile i strony Hiline, więc profil, strona
+ * posta i czat są sprawdzane po stronie serwera, nie brane na wiarę z przeglądarki.
+ */
+export async function sendSocialReply(
+  target: SocialReplyTarget,
+  text: string
+): Promise<{ ok: true; where: string } | { ok: false; error: string }> {
+  const profile = PROFILES.find((p) => p.id === target.profileId);
+  if (!profile) return { ok: false, error: "Nieznany profil — odpowiadamy tylko z kont ZlecOklejanie." };
+  const key = apiKey(profile);
+  if (!key) return { ok: false, error: `Postproxy nie jest skonfigurowany na serwerze (brak ${profile.keyEnv}).` };
+
+  if (target.mode === "comment") {
+    // Na FB ten sam profil publikuje też na stronie Hiline — sprawdzamy stronę posta.
+    const post = await pp<PostproxyPost>(`/posts/${encodeURIComponent(target.postId)}`, key).catch(() => null);
+    if (!post || !isOnProfile(post, profile)) {
+      return { ok: false, error: "Post nie jest na stronie ZlecOklejanie — odpowiedź wstrzymana." };
+    }
+    await ppSend(
+      `/posts/${encodeURIComponent(target.postId)}/comments?profile_id=${encodeURIComponent(profile.id)}`,
+      key,
+      { body: text, parent_id: target.parentId }
+    );
+    cache = null;
+    return { ok: true, where: `komentarz na ${profile.label}` };
+  }
+
+  if (profile.platform === "facebook") {
+    return { ok: false, error: "DM na Facebooku są wyłączone — czat nie mówi, czy to strona ZlecOklejanie, czy Hiline." };
+  }
+  const chats = await pp<{ data?: PostproxyChat[] }>(`/profiles/${profile.id}/chats?per_page=50`, key);
+  if (!(chats.data ?? []).some((c) => c.id === target.chatId)) {
+    return { ok: false, error: "Ten czat nie należy do profilu ZlecOklejanie — wysyłka wstrzymana." };
+  }
+  // Bez tagu HUMAN_AGENT: Meta pozwala na wolną odpowiedź w 24 h od ostatniej wiadomości;
+  // poza oknem Postproxy zwróci błąd i admin zobaczy go w toaście.
+  await ppSend(`/chats/${encodeURIComponent(target.chatId)}/messages`, key, { body: text });
+  cache = null;
+  return { ok: true, where: `wiadomość prywatna na ${profile.label}` };
 }

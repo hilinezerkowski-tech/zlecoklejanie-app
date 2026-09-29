@@ -1,12 +1,11 @@
 "use client";
 
-// /admin/agent — Faza 1: feed z Supabase (zlecenia + rejestracje).
-// Faza 2 podmieni sugestie regułowe na te z Claude. Faza 5 podłączy
-// przyciski akcji (assign_studio, activate_studio, ...) pod /api/admin/agent-action —
-// na razie tylko "Otwórz" i "Później"/"Przywróć" robią coś realnego.
+// /admin/agent — feed kart "co czeka na decyzję" (zlecenia, rejestracje, Gmail,
+// FB/IG) z sugestią i draftem od Claude. Od Fazy 5 przyciski wykonują akcje przez
+// /api/admin/agent-action; wszystko, co coś wysyła, wymaga potwierdzenia.
 
 import { useMemo, useState } from "react";
-import type { AgentAction, AgentCard, AgentFeed, AgentSignalType } from "./types";
+import type { AgentAction, AgentActionKind, AgentCard, AgentFeed, AgentSignalType } from "./types";
 
 // --- konfiguracja typów sygnałów -------------------------------------------
 
@@ -21,6 +20,19 @@ const TYPE_META: Record<
 };
 
 const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 } as const;
+
+/** Akcje wykonywane przez serwer. */
+const EXECUTABLE: AgentActionKind[] = ["assign_studio", "activate_studio", "request_info", "reply_email", "reply_social"];
+/** Akcje, które wysyłają napisaną treść — bez treści nie ruszamy. */
+const NEEDS_DRAFT: AgentActionKind[] = ["request_info", "reply_email", "reply_social"];
+
+const CONFIRM_TEXT: Partial<Record<AgentActionKind, string>> = {
+  assign_studio: "Przypisać studio do zlecenia? Studio dostanie maila z zapytaniem do wyceny.",
+  activate_studio: "Aktywować konto? Wykonawca dostanie mail powitalny z linkiem do panelu i zacznie dostawać zlecenia.",
+  request_info: "Wysłać tego maila do wykonawcy (nadawca: kontakt@zlecoklejanie.pl)?",
+  reply_email: "Wysłać odpowiedź w tym wątku (nadawca: kontakt@zlecoklejanie.pl)?",
+  reply_social: "Opublikować tę odpowiedź na Facebooku/Instagramie?",
+};
 
 type Filter = "all" | AgentSignalType;
 
@@ -41,6 +53,7 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
   const [filter, setFilter] = useState<Filter>("all");
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [busyCard, setBusyCard] = useState<string | null>(null);
 
   // Widok "Pokaż ukryte" ładuje osobną listę z ?hidden=1 zamiast trzymać
   // wszystko w pamięci — karty ukryte nie są potrzebne, dopóki admin o nie nie poprosi.
@@ -69,9 +82,9 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
     return c;
   }, [feed]);
 
-  function showToast(msg: string) {
+  function showToast(msg: string, ms = 3000) {
     setToast(msg);
-    window.setTimeout(() => setToast(null), 2500);
+    window.setTimeout(() => setToast((t) => (t === msg ? null : t)), ms);
   }
 
   async function refresh() {
@@ -103,7 +116,8 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
   }
 
   async function restoreCard(card: AgentCard) {
-    setHiddenCards((list) => (list ? list.filter((c) => c.id !== card.id) : list));
+    const remaining = (hiddenCards ?? []).filter((c) => c.id !== card.id);
+    setHiddenCards(remaining);
     const res = await fetch(`/api/admin/agent-dismiss?cardId=${encodeURIComponent(card.id)}`, {
       method: "DELETE",
     });
@@ -115,6 +129,7 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
     showToast("Karta przywrócona.");
     // Karta wróci do głównej listy przy najbliższym odświeżeniu.
     setFeed((f) => ({ ...f, hiddenCount: Math.max(0, f.hiddenCount - 1) }));
+    if (remaining.length === 0) setHiddenView(false);
   }
 
   async function openHidden() {
@@ -133,18 +148,49 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
     }
   }
 
-  function runAction(card: AgentCard, action: AgentAction) {
+  async function executeAction(card: AgentCard, action: AgentAction, draft: string) {
+    setBusyCard(card.id);
+    try {
+      const res = await fetch("/api/admin/agent-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cardId: card.id, kind: action.kind, payload: action.payload, draft }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok: boolean; message?: string; error?: string } | null;
+      if (data?.ok) {
+        setFeed((f) => ({ ...f, cards: f.cards.filter((c) => c.id !== card.id) }));
+        showToast(data.message || "Gotowe.", 6000);
+      } else {
+        showToast(data?.error || `Nie udało się (HTTP ${res.status}).`, 6000);
+      }
+    } catch {
+      showToast("Brak połączenia z serwerem — spróbuj ponownie.");
+    } finally {
+      setBusyCard(null);
+    }
+  }
+
+  /** Zwraca false, gdy karta ma pokazać pole z treścią (brak draftu do wysłania). */
+  function runAction(card: AgentCard, action: AgentAction, draft: string): boolean {
     if (action.kind === "dismiss") {
       void dismissCard(card);
-      return;
+      return true;
     }
     if (action.kind === "open" && action.href) {
       window.open(action.href, action.href.startsWith("http") ? "_blank" : "_self");
-      return;
+      return true;
     }
-    // assign_studio / activate_studio / request_info / reply_* — Faza 5.
-    console.info("[agent] akcja (bez efektu do Fazy 5)", { card: card.id, action: action.kind });
-    showToast(`„${action.label}” — akcje włączą się w Fazie 5`);
+    if (!EXECUTABLE.includes(action.kind)) return true;
+
+    const text = draft.trim();
+    if (NEEDS_DRAFT.includes(action.kind) && !text) {
+      showToast("Wpisz treść odpowiedzi w polu poniżej i kliknij ponownie.");
+      return false;
+    }
+    const preview = NEEDS_DRAFT.includes(action.kind) ? `\n\n„${text.slice(0, 400)}${text.length > 400 ? "…" : ""}”` : "";
+    if (!window.confirm(`${CONFIRM_TEXT[action.kind] ?? "Wykonać akcję?"}${preview}`)) return true;
+    void executeAction(card, action, text);
+    return true;
   }
 
   return (
@@ -152,8 +198,8 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
       {/* Nagłówek */}
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-[#2b2b2b]">Agent</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h1 className="text-2xl font-semibold text-brand-kosc">Agent</h1>
+          <p className="mt-1 text-sm text-brand-chrom">
             {counts.all === 0
               ? "Nic nie czeka."
               : `${counts.all} ${counts.all === 1 ? "rzecz czeka" : counts.all < 5 ? "rzeczy czekają" : "rzeczy czeka"} na decyzję · stan z ${timeAgo(feed.generatedAt)}`}
@@ -191,7 +237,7 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
         <ul className="space-y-3">
           {cards.map((card) => (
             <li key={card.id}>
-              <CardView card={card} onAction={(a) => runAction(card, a)} />
+              <CardView card={card} busy={busyCard === card.id} onAction={(a, d) => runAction(card, a, d)} />
             </li>
           ))}
         </ul>
@@ -212,7 +258,7 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
         ) : (
           <div>
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-medium text-neutral-600">Ukryte karty</h2>
+              <h2 className="text-sm font-medium text-brand-chrom">Ukryte karty</h2>
               <button
                 type="button"
                 onClick={() => setHiddenView(false)}
@@ -229,7 +275,14 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
               <ul className="space-y-3">
                 {hiddenCards.map((card) => (
                   <li key={card.id}>
-                    <CardView card={card} onAction={() => void restoreCard(card)} restoreOnly />
+                    <CardView
+                      card={card}
+                      onAction={() => {
+                        void restoreCard(card);
+                        return true;
+                      }}
+                      restoreOnly
+                    />
                   </li>
                 ))}
               </ul>
@@ -242,7 +295,7 @@ export default function AgentDashboard({ initialFeed }: { initialFeed: AgentFeed
       {toast && (
         <div
           role="status"
-          className="fixed bottom-5 left-1/2 -translate-x-1/2 rounded-md bg-[#2b2b2b] px-4 py-2 text-sm text-white shadow-lg"
+          className="fixed bottom-5 left-1/2 max-w-[90vw] -translate-x-1/2 rounded-md bg-[#2b2b2b] px-4 py-2 text-sm text-white shadow-lg"
         >
           {toast}
         </div>
@@ -284,23 +337,33 @@ function FilterChip({
 function CardView({
   card,
   onAction,
+  busy,
   restoreOnly,
 }: {
   card: AgentCard;
-  onAction: (a: AgentAction) => void;
+  /** Zwraca false, gdy trzeba pokazać pole z treścią. */
+  onAction: (a: AgentAction, draft: string) => boolean;
+  busy?: boolean;
   /** Widok "Pokaż ukryte": jedyna dostępna akcja to przywrócenie karty. */
   restoreOnly?: boolean;
 }) {
-  const [draftOpen, setDraftOpen] = useState(false);
   const meta = TYPE_META[card.type];
   const primary = card.actions.find((a) => a.primary);
-  const draft = card.actions.find((a) => a.draft)?.draft;
+  const draftAction = card.actions.find((a) => NEEDS_DRAFT.includes(a.kind));
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draft, setDraft] = useState(draftAction?.draft ?? "");
+
+  function click(a: AgentAction) {
+    const handled = onAction(a, draft);
+    if (!handled) setDraftOpen(true);
+  }
 
   return (
     <article
       className={`rounded-lg border bg-white p-4 ${
         card.priority === "high" ? "border-l-4 border-l-amber-400 border-neutral-200" : "border-neutral-200"
-      } ${restoreOnly ? "opacity-70" : ""}`}
+      } ${restoreOnly || busy ? "opacity-70" : ""}`}
+      aria-busy={busy || undefined}
     >
       {/* wiersz meta */}
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
@@ -316,7 +379,7 @@ function CardView({
       {/* fakty */}
       <ul className="mt-2 space-y-0.5 text-sm text-neutral-600">
         {card.facts.map((f, i) => (
-          <li key={i}>{f}</li>
+          <li key={i} className="whitespace-pre-line break-words">{f}</li>
         ))}
       </ul>
 
@@ -326,20 +389,22 @@ function CardView({
         {card.suggestion}
       </p>
 
-      {/* projekt odpowiedzi */}
-      {draft && !restoreOnly && (
+      {/* projekt odpowiedzi — edytowalny; ta treść idzie do wysyłki */}
+      {draftAction && !restoreOnly && (
         <div className="mt-2">
           <button
             type="button"
             onClick={() => setDraftOpen((v) => !v)}
             className="text-sm text-neutral-600 underline-offset-2 hover:underline"
           >
-            {draftOpen ? "Zwiń projekt odpowiedzi" : "Pokaż projekt odpowiedzi"}
+            {draftOpen ? "Zwiń projekt odpowiedzi" : draft ? "Pokaż projekt odpowiedzi" : "Napisz odpowiedź"}
           </button>
           {draftOpen && (
             <textarea
-              defaultValue={draft}
-              rows={4}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={6}
+              placeholder="Treść odpowiedzi…"
               className="mt-2 w-full rounded-md border border-neutral-300 p-2 text-sm text-neutral-800 focus:border-[#84c440] focus:outline-none"
             />
           )}
@@ -351,7 +416,7 @@ function CardView({
         {restoreOnly ? (
           <button
             type="button"
-            onClick={() => onAction({ kind: "dismiss", label: "Przywróć" })}
+            onClick={() => onAction({ kind: "dismiss", label: "Przywróć" }, "")}
             className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
           >
             Przywróć
@@ -361,14 +426,15 @@ function CardView({
             <button
               key={a.kind + a.label}
               type="button"
-              onClick={() => onAction(a)}
+              disabled={busy}
+              onClick={() => click(a)}
               className={
                 a === primary
-                  ? "rounded-md bg-[#84c440] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#5fa52e]"
-                  : "rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                  ? "rounded-md bg-[#84c440] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#5fa52e] disabled:opacity-50"
+                  : "rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
               }
             >
-              {a.label}
+              {busy && a === primary ? "Wykonuję…" : a.label}
             </button>
           ))
         )}
