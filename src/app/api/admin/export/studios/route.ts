@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -38,6 +39,7 @@ export async function GET() {
     .select(`
       id, business_name, nip, slug, status, verified_at, created_at, deleted_at,
       description, instagram, website, address, service_radius_km,
+      services, specializations,
       google_rating, google_reviews_count,
       profile:profiles!studios_id_fkey(email, full_name, phone, city)
     `)
@@ -50,6 +52,7 @@ export async function GET() {
   const headers = [
     "id", "business_name", "nip", "slug", "status", "verified_at", "created_at", "deleted_at",
     "description", "instagram", "website", "address", "service_radius_km",
+    "services", "specializations",
     "google_rating", "google_reviews_count",
     "email", "contact_name", "phone", "city",
   ];
@@ -71,6 +74,9 @@ export async function GET() {
         website: s.website,
         address: s.address,
         service_radius_km: s.service_radius_km,
+        // Etykiety ze słownika (src/lib/uslugi.ts); specializations = „Inne usługi (opis)”.
+        services: oczyscUslugi(s.services).map(labelUslugi).join("; "),
+        specializations: Array.isArray(s.specializations) ? (s.specializations as string[]).join("; ") : "",
         google_rating: s.google_rating,
         google_reviews_count: s.google_reviews_count,
         email: profile?.email ?? "",

@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import LeadActions from "./lead-actions";
+import { mapLandingCheckboxy, maUslugeCore } from "@/lib/uslugi";
+import { BRAK_USLUG_REASON } from "@/lib/onboarding";
 
 // Leady zawierają dane kontaktowe — strona musi być zawsze świeża i nie może
 // trafić do cache CDN.
@@ -170,6 +172,17 @@ export default async function LeadyPage({
                     <span className="text-xs text-brand-chrom">
                       {new Date(lead.created_at).toLocaleString("pl-PL")}
                     </span>
+                    {/* Auto-onboarding pomija studio bez usług (src/lib/onboarding.ts). */}
+                    {lead.kind === "studio" &&
+                      lead.status === "new" &&
+                      !maUslugeCore(mapLandingCheckboxy(p).services) && (
+                        <span
+                          className="text-xs px-2 py-1 rounded-full font-medium bg-amber-400/15 text-amber-400"
+                          title="Dodaj wykonawcę ręcznie w /admin/studia — formularz wymaga usług."
+                        >
+                          ⚠ {BRAK_USLUG_REASON}
+                        </span>
+                      )}
                   </div>
 
                   <LeadActions

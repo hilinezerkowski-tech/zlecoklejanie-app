@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createStudio } from "../studia/actions";
 import { createDesigner } from "../graficy/actions";
 import { adresZKodem, normalizujKod } from "@/lib/kod-pocztowy";
-import { mapLandingUsluga } from "@/lib/uslugi";
+import { mapLandingCheckboxy, mapLandingUsluga } from "@/lib/uslugi";
 
 export type LeadActionResult = {
   ok: boolean;
@@ -210,15 +210,27 @@ export async function convertLeadToStudio(leadId: string): Promise<LeadActionRes
   if (!email || !businessName)
     return { ok: false, error: "Lead nie zawiera e-maila lub nazwy firmy." };
 
+  // Usługi z checkboxów formularza (stare usl_wrap… i nowe usl_<kod>). Bez usługi
+  // createStudio zwróci błąd — wtedy dodaj wykonawcę ręcznie w /admin/studia.
+  const uslugi = mapLandingCheckboxy(p);
   const res = await createStudio({
     email,
     business_name: businessName,
     address: adresZKodem(p.miasto, p.kod_pocztowy) || undefined,
     instagram: p.instagram || undefined,
     phone: p.telefon || undefined,
+    services: uslugi.services,
+    u_klienta: uslugi.uKlienta,
   });
 
-  if (!res.ok) return { ok: false, error: res.error };
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: uslugi.services.length
+        ? res.error
+        : `${res.error} Zgłoszenie nie ma zaznaczonych usług — dodaj wykonawcę ręcznie w /admin/studia.`,
+    };
+  }
 
   await admin
     .from("landing_leads")

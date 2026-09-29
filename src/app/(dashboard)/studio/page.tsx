@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { labelUslugi } from "@/lib/uslugi";
+import { labelUslugi, maUslugeCore } from "@/lib/uslugi";
 
 export default async function StudioDashboard() {
   const supabase = await createClient();
@@ -11,7 +11,7 @@ export default async function StudioDashboard() {
   // Dane studia (studios.id === auth uid)
   const { data: studio } = await supabase
     .from("studios")
-    .select("business_name, status, gallery")
+    .select("business_name, status, gallery, services")
     .eq("id", user!.id)
     .single();
 
@@ -74,6 +74,23 @@ export default async function StudioDashboard() {
             : studio?.status || "Nowe"}
         </span>
       </p>
+
+      {studio && !maUslugeCore(studio.services) && (
+        <div className="bg-amber-400/10 border border-amber-400/30 rounded-2xl p-6 mb-6">
+          <h2 className="font-semibold text-amber-400 mb-2">
+            Zaznacz swoje usługi — bez tego nie dostaniesz zleceń
+          </h2>
+          <p className="text-sm text-brand-chrom mb-4">
+            Zlecenia dobieramy po usłudze (zmiana koloru, PPF, reklama, szyby…). Zaznaczenie zajmie minutę.
+          </p>
+          <Link
+            href="/studio/profil#uslugi"
+            className="inline-block px-4 py-2 bg-amber-400 text-brand-grafit font-bold text-sm rounded-xl hover:bg-amber-400/90 transition"
+          >
+            Zaznacz usługi →
+          </Link>
+        </div>
+      )}
 
       {!profileComplete && (
         <div className="bg-amber-400/10 border border-amber-400/30 rounded-2xl p-6 mb-6">

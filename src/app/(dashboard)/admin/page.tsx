@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Link from "next/link";
+import { maUslugeCore } from "@/lib/uslugi";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,9 @@ export default async function AdminDashboard() {
   const { count: ordersCount } = await supabase.from("orders").select("*", { count: "exact", head: true });
   const { count: studiosActive } = await supabase.from("studios").select("*", { count: "exact", head: true }).eq("status", "active").is("deleted_at", null);
   const { count: studiosPending } = await supabase.from("studios").select("*", { count: "exact", head: true }).eq("status", "pending").is("deleted_at", null);
+  // „Bez usług” — nieusunięte studia bez usługi core (nie pasują do żadnego zlecenia).
+  const { data: studiosServices } = await supabase.from("studios").select("services").is("deleted_at", null);
+  const studiosNoServices = (studiosServices || []).filter((s: { services: string[] | null }) => !maUslugeCore(s.services)).length;
   const { count: ordersNew } = await supabase.from("orders").select("*", { count: "exact", head: true }).eq("status", "new");
 
   // Leady z landing page: tabela celowo bez polityki SELECT, więc liczymy
@@ -33,7 +37,8 @@ export default async function AdminDashboard() {
     { label: "Nowe zlecenia (do przypisania)", value: ordersNew || 0, color: "text-amber-400", href: "/admin/zlecenia?status=new" },
     { label: "Wszystkie zlecenia", value: ordersCount || 0, color: "text-teal-400", href: "/admin/zlecenia" },
     { label: "Aktywne studia", value: studiosActive || 0, color: "text-blue-400", href: "/admin/studia" },
-    { label: "Studia do weryfikacji", value: studiosPending || 0, color: "text-orange-400", href: "/admin/studia" },
+    { label: "Studia do weryfikacji", value: studiosPending || 0, color: "text-orange-400", href: "/admin/studia?status=pending" },
+    { label: "Studia bez usług", value: studiosNoServices, color: "text-amber-400", href: "/admin/studia?uslugi=brak" },
   ];
 
   return (

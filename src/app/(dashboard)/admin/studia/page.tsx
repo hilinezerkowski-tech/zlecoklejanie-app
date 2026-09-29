@@ -4,6 +4,7 @@ import { AddStudioForm } from "./add-studio-form";
 import { StudioActions } from "./studio-actions";
 import { RestoreStudioButton, StudioManage } from "./studio-manage";
 import { SearchList } from "@/components/ui/search-list";
+import { labelUslugi, maUslugeCore, oczyscUslugi } from "@/lib/uslugi";
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   pending: { label: "Oczekuje", color: "bg-amber-400/15 text-amber-400" },
@@ -15,12 +16,14 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 export default async function StudiaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; uslugi?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createClient();
   // „Usunięte" = miękko usunięte (deleted_at ustawione) — osobna zakładka z „Przywróć"
   const showDeleted = params.status === "deleted";
+  // „Bez usług” = brak usługi core (studios.services) — do uzupełnienia (Faza 5 briefu).
+  const showNoServices = params.uslugi === "brak";
 
   let query = supabase
     .from("studios")
@@ -31,6 +34,8 @@ export default async function StudiaPage({
       address,
       instagram,
       website,
+      services,
+      work_mode,
       specializations,
       foil_brands,
       google_rating,
@@ -54,7 +59,17 @@ export default async function StudiaPage({
     }
   }
 
-  const { data: studios } = await query;
+  const { data: fetched } = await query;
+  const studios = showNoServices
+    ? (fetched || []).filter((s: any) => !maUslugeCore(s.services))
+    : fetched;
+
+  // Licznik do filtra — wszystkie nieusunięte, niezależnie od zakładki statusu.
+  const { data: allServices } = await supabase
+    .from("studios")
+    .select("services")
+    .is("deleted_at", null);
+  const noServicesCount = (allServices || []).filter((s: any) => !maUslugeCore(s.services)).length;
 
   return (
     <div>
@@ -70,7 +85,7 @@ export default async function StudiaPage({
         <a
           href="/admin/studia"
           className={`px-3 py-1.5 rounded-lg text-sm transition ${
-            !params.status
+            !params.status && !showNoServices
               ? "bg-brand-lime/15 text-brand-lime"
               : "text-brand-chrom hover:text-brand-kosc hover:bg-white/5"
           }`}
@@ -99,6 +114,16 @@ export default async function StudiaPage({
           }`}
         >
           Usunięte
+        </a>
+        <a
+          href="/admin/studia?uslugi=brak"
+          className={`px-3 py-1.5 rounded-lg text-sm transition ${
+            showNoServices
+              ? "bg-amber-400/15 text-amber-400"
+              : "text-amber-400/80 hover:text-amber-400 hover:bg-white/5"
+          }`}
+        >
+          ⚠ Bez usług ({noServicesCount})
         </a>
       </div>
 
@@ -155,6 +180,11 @@ export default async function StudiaPage({
                           🚗 Wrapper
                         </span>
                       )}
+                      {!studio.deleted_at && !maUslugeCore(studio.services) && (
+                        <span className="text-xs px-2 py-1 rounded-full font-medium bg-amber-400/15 text-amber-400">
+                          ⚠ brak usług
+                        </span>
+                      )}
                       {studio.deleted_at && (
                         <span className="text-xs px-2 py-1 rounded-full font-medium bg-red-400/15 text-red-400">
                           Usunięte {new Date(studio.deleted_at).toLocaleDateString("pl-PL")}
@@ -194,18 +224,23 @@ export default async function StudiaPage({
                         <p>NIP: {studio.nip}</p>
                       )}
                     </div>
+                    {oczyscUslugi(studio.services).length > 0 && (
+                      <div className="flex gap-2 mt-3 flex-wrap">
+                        {oczyscUslugi(studio.services).map((s) => (
+                          <span
+                            key={s}
+                            className="text-xs px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime"
+                          >
+                            {labelUslugi(s)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {studio.specializations &&
                       studio.specializations.length > 0 && (
-                        <div className="flex gap-2 mt-3 flex-wrap">
-                          {studio.specializations.map((s: string) => (
-                            <span
-                              key={s}
-                              className="text-xs px-2 py-0.5 rounded bg-white/5 text-brand-chrom"
-                            >
-                              {s}
-                            </span>
-                          ))}
-                        </div>
+                        <p className="mt-2 text-xs text-brand-chrom/70">
+                          Inne (opis): {studio.specializations.join(", ")}
+                        </p>
                       )}
                     {studio.rejection_reason && (
                       <p className="mt-2 text-sm text-red-400">
@@ -227,6 +262,8 @@ export default async function StudiaPage({
                           business_name: studio.business_name,
                           address: studio.address,
                           instagram: studio.instagram,
+                          services: studio.services,
+                          work_mode: studio.work_mode,
                           specializations: studio.specializations,
                           status: studio.status,
                           email: studio.profile?.email ?? null,
@@ -248,6 +285,8 @@ export default async function StudiaPage({
                 studio.nip,
                 studio.instagram,
                 st.label,
+                ...oczyscUslugi(studio.services).map(labelUslugi),
+                maUslugeCore(studio.services) ? "" : "brak usług",
                 ...(studio.specializations || []),
                 ...(studio.foil_brands || []),
               ]

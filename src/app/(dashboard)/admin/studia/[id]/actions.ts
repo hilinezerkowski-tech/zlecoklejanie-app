@@ -31,6 +31,8 @@ export async function getStudioDetail(studioId: string) {
       nip,
       slug,
       description,
+      services,
+      work_mode,
       specializations,
       foil_brands,
       instagram,

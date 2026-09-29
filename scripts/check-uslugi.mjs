@@ -12,6 +12,9 @@ import {
   mapLandingCheckboxy,
   studioPasuje,
   maUslugeCore,
+  oczyscUslugi,
+  naruszaWymogUslug,
+  ustawUKlienta,
 } from "../src/lib/uslugi.ts";
 
 let bledy = 0;
@@ -87,6 +90,20 @@ eq("zlecenie grafika bez filtra", studioPasuje(["ppf"], "grafika"), "bez_filtra"
 eq("zlecenie inne bez filtra", studioPasuje([], "inne"), "bez_filtra");
 eq("stare zlecenie oklejanie", studioPasuje(["zmiana_koloru"], "oklejanie"), "pasuje");
 eq("stare zlecenie branding", studioPasuje(["reklama"], "branding"), "pasuje");
+
+// 6. Wymóg usług (ta sama reguła co trigger 024c)
+eq("oczyscUslugi odrzuca śmieci i porządkuje", oczyscUslugi(["szyby", "xyz", 3, "ppf", "ppf"]), ["ppf", "szyby"]);
+eq("oczyscUslugi nie-tablica", oczyscUslugi("ppf"), []);
+eq("nowy aktywny bez usług → blokada", naruszaWymogUslug({ status: "active", services: [] }), true);
+eq("aktywacja pending bez usług → blokada", naruszaWymogUslug({ status: "active", services: [], poprzedniStatus: "pending", poprzednieUslugi: [] }), true);
+eq("aktywacja z samym detailingiem → blokada", naruszaWymogUslug({ status: "active", services: ["detailing"], poprzedniStatus: "pending" }), true);
+eq("stare aktywne bez usług, usługi bez zmian → OK", naruszaWymogUslug({ status: "active", services: [], poprzedniStatus: "active", poprzednieUslugi: [] }), false);
+eq("aktywne: wyczyszczenie usług → blokada", naruszaWymogUslug({ status: "active", services: [], poprzedniStatus: "active", poprzednieUslugi: ["ppf"] }), true);
+eq("zawieszenie bez usług → OK", naruszaWymogUslug({ status: "suspended", services: [], poprzedniStatus: "active" }), false);
+eq("aktywny z usługą → OK", naruszaWymogUslug({ status: "active", services: ["ppf"] }), false);
+eq("ustawUKlienta dodaje bez duplikatu", ustawUKlienta(["garaz", "u_klienta"], true), ["garaz", "u_klienta"]);
+eq("ustawUKlienta usuwa, reszta zostaje", ustawUKlienta(["garaz", "u_klienta"], false), ["garaz"]);
+eq("ustawUKlienta z null", ustawUKlienta(null, true), ["u_klienta"]);
 
 if (bledy > 0) {
   console.error(`\n${bledy} błąd(ów) w mapowaniu usług.`);

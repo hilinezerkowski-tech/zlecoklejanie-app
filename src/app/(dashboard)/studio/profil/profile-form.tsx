@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { updateOwnStudioProfile } from "./actions";
+import { UslugiCheckboxy, type UslugiValue } from "@/components/ui/uslugi-checkboxy";
+import { WORK_MODE_U_KLIENTA, oczyscUslugi } from "@/lib/uslugi";
 
 type StudioProfile = {
   id: string;
   business_name: string | null;
   description: string | null;
+  services: string[] | null;
+  work_mode: string[] | null;
   specializations: string[] | null;
   foil_brands: string[] | null;
   instagram: string | null;
@@ -17,17 +21,11 @@ type StudioProfile = {
   is_paused: boolean | null;
 };
 
-// Tablica <-> tekst rozdzielany przecinkami (dla pól specializations / foil_brands)
+// Tablica -> tekst rozdzielany przecinkami (pola „Inne usługi” i foil_brands)
 const toText = (arr: string[] | null) => (arr || []).join(", ");
-const toArray = (text: string) =>
-  text
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
 
 export function ProfileForm({ studio }: { studio: StudioProfile }) {
   const router = useRouter();
-  const supabase = createClient();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -36,12 +34,16 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
   const [form, setForm] = useState({
     business_name: studio.business_name || "",
     description: studio.description || "",
-    specializations: toText(studio.specializations),
     foil_brands: toText(studio.foil_brands),
     instagram: studio.instagram || "",
     website: studio.website || "",
     address: studio.address || "",
     service_radius_km: String(studio.service_radius_km ?? 50),
+  });
+  const [uslugi, setUslugi] = useState<UslugiValue>({
+    services: oczyscUslugi(studio.services),
+    uKlienta: (studio.work_mode || []).includes(WORK_MODE_U_KLIENTA),
+    inne: toText(studio.specializations),
   });
 
   function update(field: keyof typeof form, value: string) {
@@ -54,35 +56,17 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
     setError("");
     setSuccess("");
 
-    const radius = parseInt(form.service_radius_km, 10);
+    // Zapis przez server action — serwer wymaga min. 1 usługi ze słownika.
+    const res = await updateOwnStudioProfile({
+      ...form,
+      services: uslugi.services,
+      u_klienta: uslugi.uKlienta,
+      specializations: uslugi.inne,
+      is_paused: paused,
+    });
 
-    const { data: updated, error: updErr } = await supabase
-      .from("studios")
-      .update({
-        business_name: form.business_name.trim() || null,
-        description: form.description.trim() || null,
-        specializations: toArray(form.specializations),
-        foil_brands: toArray(form.foil_brands),
-        instagram: form.instagram.replace("@", "").trim() || null,
-        website: form.website.trim() || null,
-        address: form.address.trim() || null,
-        service_radius_km: Number.isFinite(radius) ? radius : 50,
-        is_paused: paused,
-      })
-      .eq("id", studio.id)
-      .select();
-
-    if (updErr) {
-      console.error("[ProfileForm] update error:", updErr);
-      setError(`Nie udało się zapisać: ${updErr.message}`);
-    } else if (!updated || updated.length === 0) {
-      // RLS zablokował zapis lub rekord nie istnieje — informujemy jasno
-      console.warn("[ProfileForm] update returned 0 rows for studio", studio.id);
-      setError(
-        "Zapis nie powiódł się — brak uprawnień lub profil nie istnieje. " +
-        "Odśwież stronę i spróbuj ponownie. Jeśli problem się powtarza, " +
-        "napisz do nas."
-      );
+    if (!res.ok) {
+      setError(res.error || "Nie udało się zapisać.");
     } else {
       setSuccess("Zapisano.");
       router.refresh();
@@ -122,19 +106,11 @@ export function ProfileForm({ studio }: { studio: StudioProfile }) {
         />
       </div>
 
+      <div id="uslugi" className="rounded-xl border border-brand-border bg-brand-grafit p-4">
+        <UslugiCheckboxy value={uslugi} onChange={setUslugi} disabled={loading} />
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs text-brand-chrom mb-1">
-            Specjalizacje (po przecinku)
-          </label>
-          <input
-            type="text"
-            value={form.specializations}
-            onChange={(e) => update("specializations", e.target.value)}
-            placeholder="oklejanie, PPF, ceramika, detailing"
-            className={inputCls}
-          />
-        </div>
         <div>
           <label className="block text-xs text-brand-chrom mb-1">
             Marki folii (po przecinku)
