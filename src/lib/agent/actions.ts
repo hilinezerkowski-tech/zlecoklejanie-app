@@ -60,14 +60,22 @@ async function assignStudio(admin: AdminClient, adminId: string, p?: Record<stri
 
   const { data: studios } = await admin
     .from("studios")
-    .select("id, business_name, status, deleted_at")
+    .select("id, business_name, status, deleted_at, is_paused")
     .in("id", studioIds);
-  const rows = (studios ?? []) as { id: string; business_name: string | null; status: string; deleted_at: string | null }[];
+  const rows = (studios ?? []) as {
+    id: string;
+    business_name: string | null;
+    status: string;
+    deleted_at: string | null;
+    is_paused: boolean | null;
+  }[];
   const notReady = studioIds.filter((id) => {
     const s = rows.find((r) => r.id === id);
-    return !s || s.status !== "active" || s.deleted_at;
+    return !s || s.status !== "active" || s.deleted_at || s.is_paused;
   });
-  if (notReady.length > 0) return fail("Któreś ze studiów nie jest już aktywne — odśwież feed.");
+  if (notReady.length > 0) {
+    return fail("Któreś ze studiów nie jest już aktywne albo ma pauzę leadów — odśwież feed.");
+  }
 
   const { error: insertErr } = await admin
     .from("order_assignments")

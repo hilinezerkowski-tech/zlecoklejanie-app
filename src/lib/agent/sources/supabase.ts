@@ -72,10 +72,12 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
   if (unassigned.length === 0) return [];
 
   // Aktywne studia, raz dla wszystkich kart — dopasowanie po mieście z adresu.
+  // Bez studiów z pauzą leadów — tak samo jak lista "Przypisz studio" w panelu zlecenia.
   const { data: studios } = await admin
     .from("studios")
     .select("id, business_name, address")
     .eq("status", "active")
+    .eq("is_paused", false)
     .is("deleted_at", null);
   const activeStudios = (studios ?? []) as ActiveStudio[];
   const byCity = new Map<string, ActiveStudio[]>();
