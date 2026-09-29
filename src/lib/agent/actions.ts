@@ -7,7 +7,7 @@
 import type { AgentActionKind } from "@/app/(dashboard)/admin/agent/types";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { isValidEmail } from "@/lib/email";
-import { sendAssignedEmail } from "@/lib/notify-assigned";
+import { przypiszStudia, MAX_STUDIOS_PER_ORDER } from "@/lib/assign-studio";
 import { sendStudioWelcome } from "@/lib/studio-welcome";
 import { sendDesignerWelcome } from "@/lib/designer-welcome";
 import { BLAD_BRAK_USLUG, maUslugeCore } from "@/lib/uslugi";
@@ -35,7 +35,6 @@ export type AgentActionResult =
     }
   | { ok: false; error: string };
 
-const MAX_STUDIOS_PER_ORDER = 3;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function str(p: Record<string, unknown> | undefined, k: string): string {
@@ -69,52 +68,17 @@ async function assignStudio(admin: AdminClient, adminId: string, p?: Record<stri
     .eq("order_id", orderId);
   if ((count ?? 0) > 0) return fail("Zlecenie ma już przypisane studio — kolejne dodaj w panelu zlecenia.");
 
-  const { data: studios } = await admin
-    .from("studios")
-    .select("id, business_name, status, deleted_at, is_paused")
-    .in("id", studioIds);
-  const rows = (studios ?? []) as {
-    id: string;
-    business_name: string | null;
-    status: string;
-    deleted_at: string | null;
-    is_paused: boolean | null;
-  }[];
-  const notReady = studioIds.filter((id) => {
-    const s = rows.find((r) => r.id === id);
-    return !s || s.status !== "active" || s.deleted_at || s.is_paused;
-  });
-  if (notReady.length > 0) {
-    return fail("Któreś ze studiów nie jest już aktywne albo ma pauzę leadów — odśwież feed.");
-  }
-
-  const { error: insertErr } = await admin
-    .from("order_assignments")
-    .insert(studioIds.map((studio_id) => ({ order_id: orderId, studio_id, assigned_by: adminId })));
-  if (insertErr) {
+  // Wspólny rdzeń z panelem (src/lib/assign-studio.ts): pauza leadów, aktywność i — od Fazy 3 —
+  // dobór po usłudze. Agent NIGDY nie wymusza (force) — niepasujące studio zwraca błąd.
+  const res = await przypiszStudia(admin, { orderId, studioIds, adminId, force: false });
+  if (!res.ok) {
     return fail(
-      insertErr.message.includes("Maksymalnie") ? "To zlecenie ma już 3 przypisane studia." : `Błąd przypisania: ${insertErr.message}`
+      res.wymagaPotwierdzenia
+        ? `${res.error} Agent nie przypisuje niepasujących studiów — zrób to w panelu zlecenia (z potwierdzeniem).`
+        : res.error
     );
   }
-
-  await admin
-    .from("orders")
-    .update({ status: "assigned", assigned_at: new Date().toISOString() })
-    .eq("id", orderId)
-    .eq("status", "new");
-
-  // Mail "Nowe zlecenie do wyceny" — ten sam helper co przycisk Przypisz w panelu.
-  let sent = 0;
-  for (const studioId of studioIds) {
-    const out = await sendAssignedEmail(admin, orderId, studioId);
-    if (out.ok && out.result.status === "sent") sent++;
-  }
-
-  const names = studioIds.map((id) => rows.find((r) => r.id === id)?.business_name || "studio").join(", ");
-  return {
-    ok: true,
-    message: `Przypisano: ${names}. Maile o zleceniu: ${sent}/${studioIds.length} wysłane${sent < studioIds.length ? " — resztę wyślesz ponownie z panelu zlecenia" : ""}.`,
-  };
+  return { ok: true, message: res.message };
 }
 
 async function activateStudio(admin: AdminClient, p?: Record<string, unknown>): Promise<AgentActionResult> {

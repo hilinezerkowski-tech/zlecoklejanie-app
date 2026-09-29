@@ -1,5 +1,6 @@
 import { APP_URL, sendEmailResult, type SendEmailResult } from "@/lib/email";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { labelUslugi } from "@/lib/uslugi";
 
 /**
  * Mail "Nowe zlecenie do wyceny" do konkretnego studia przypisanego do zlecenia.
@@ -37,7 +38,7 @@ export async function sendAssignedEmail(
 ): Promise<AssignedEmailOutcome> {
   const { data: order } = await admin
     .from("orders")
-    .select("id, car_brand, car_model, city, photos")
+    .select("id, car_brand, car_model, city, photos, service_type")
     .eq("id", orderId)
     .single();
   if (!order) return { ok: false, error: "Nie znaleziono zlecenia." };
@@ -75,6 +76,7 @@ export async function sendAssignedEmail(
       "Masz nowe zlecenie do wyceny",
       `<p>Czesc ${studio?.business_name ?? ""},</p>
        <p>Klient szuka wykonawcy: <strong>${orderLabel}</strong>.</p>
+       <p>Usługa: <strong>${labelUslugi(order.service_type)}</strong>.</p>
        <p>Zaloguj sie i wyslij wycene — maksymalnie 3 studia dostaja to zapytanie, wiec masz realna szanse.</p>
        ${photoCount > 0 ? `<p><strong>Zalaczniki:</strong> ${photoCount} ${photoCount === 1 ? "zdjecie" : "zdjec"} — zobacz w panelu.</p>` : ""}`,
       `${APP_URL}/studio/zlecenia/${order.id}`,

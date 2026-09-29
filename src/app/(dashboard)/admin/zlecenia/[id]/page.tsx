@@ -99,7 +99,7 @@ export default async function OrderDetailPage({
   const { data: availableStudios } = await supabase
     .from("studios")
     // UWAGA: tabela studios nie ma kolumny `city` — miasto parsuje geo.ts z `address`.
-    .select("id, business_name, address, specializations")
+    .select("id, business_name, address, specializations, services")
     .eq("status", "active")
     .eq("is_paused", false)
     .is("deleted_at", null);
@@ -446,6 +446,7 @@ export default async function OrderDetailPage({
             orderId={order.id}
             studios={unassignedStudios}
             orderCity={order.city}
+            orderService={order.service_type}
           />
         )}
 

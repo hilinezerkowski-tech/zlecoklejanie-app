@@ -7,6 +7,7 @@ import { sendAssignedEmail } from "@/lib/notify-assigned";
 import { etykietaZlecenia, sendDesignerBrief } from "@/lib/designer-brief";
 import { isValidEmail } from "@/lib/email";
 import { isUslugaZlecenia } from "@/lib/uslugi";
+import { przypiszStudia, type PrzypisanieWynik } from "@/lib/assign-studio";
 
 type ActionResult = { ok: boolean; error?: string; message?: string };
 
@@ -30,6 +31,29 @@ async function requireAdmin(): Promise<{ ok: true; userId: string } | { ok: fals
 function revalidateOrder(orderId: string) {
   revalidatePath(`/admin/zlecenia/${orderId}`);
   revalidatePath("/admin/zlecenia");
+}
+
+/**
+ * Przypisanie studia do zlecenia — JEDYNA droga z panelu (nigdy insert z przeglądarki).
+ * Studio spoza „pasujących” (brak usług / nie robi tej usługi) wymaga force=true,
+ * a wymuszenie trafia do admin_actions (assign_mismatch).
+ */
+export async function assignStudio(
+  orderId: string,
+  studioId: string,
+  opts: { force?: boolean } = {}
+): Promise<PrzypisanieWynik> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
+  const res = await przypiszStudia(createAdminClient(), {
+    orderId,
+    studioIds: [studioId],
+    adminId: auth.userId,
+    force: Boolean(opts.force),
+  });
+  if (res.ok) revalidateOrder(orderId);
+  return res;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { createPublicClient } from "@/lib/supabase/public";
 import { cityFromAddress, citySlug } from "@/lib/studio-location";
 import type { StudioCardData } from "@/components/ui/studio-card";
+import { FILTR_U_KLIENTA, USLUGI, WORK_MODE_U_KLIENTA, isUslugaKod, labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 
 export type CatalogStudio = StudioCardData & {
   id: string;
@@ -15,7 +16,7 @@ export async function getCatalogStudios(): Promise<CatalogStudio[]> {
   const { data: studios } = await supabase
     .from("studios")
     .select(
-      "id, slug, business_name, description, address, specializations, provider_type, portfolio, google_rating, google_reviews_count"
+      "id, slug, business_name, description, address, services, work_mode, specializations, provider_type, portfolio, google_rating, google_reviews_count"
     )
     .eq("status", "active")
     .is("deleted_at", null);
@@ -79,12 +80,21 @@ export function filterStudios(
   return list.filter((s) => {
     if (f.miasto && s.citySlugValue !== f.miasto) return false;
     if (f.typ && (s.provider_type ?? "studio") !== f.typ) return false;
-    if (f.usluga && !(s.specializations || []).includes(f.usluga)) return false;
+    // Filtr usług = słownik (src/lib/uslugi.ts) + „Dojazd do klienta” (work_mode).
+    // Stare wartości ?usluga=<tekst> (sprzed słownika) nie pasują do niczego — jak nieznany filtr.
+    if (f.usluga) {
+      if (f.usluga === FILTR_U_KLIENTA) {
+        if (!(s.work_mode || []).includes(WORK_MODE_U_KLIENTA)) return false;
+      } else if (!isUslugaKod(f.usluga) || !oczyscUslugi(s.services).includes(f.usluga)) {
+        return false;
+      }
+    }
     if (f.q) {
       const hay = [
         s.business_name,
         s.description,
         s.cityName,
+        ...oczyscUslugi(s.services).map(labelUslugi),
         ...(s.specializations || []),
       ]
         .filter(Boolean)
@@ -112,12 +122,18 @@ export function cityIndex(
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "pl"));
 }
 
-// Unikalne usługi posortowane wg częstości
-export function serviceIndex(list: CatalogStudio[]): string[] {
-  const m = new Map<string, number>();
-  for (const s of list)
-    for (const sp of s.specializations || []) m.set(sp, (m.get(sp) ?? 0) + 1);
-  return Array.from(m.entries())
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "pl"))
-    .map(([k]) => k);
+// Filtry usług: 8 pozycji słownika + „Dojazd do klienta”, zawsze w tej samej kolejności,
+// z liczbą studiów. Pozycje bez studiów zostają (pusty wynik jest uczciwszy niż znikający filtr).
+export function serviceIndex(list: CatalogStudio[]): { value: string; label: string; count: number }[] {
+  const opcje = USLUGI.map((u) => ({
+    value: u.kod as string,
+    label: u.etykieta,
+    count: list.filter((s) => oczyscUslugi(s.services).includes(u.kod)).length,
+  }));
+  opcje.push({
+    value: FILTR_U_KLIENTA,
+    label: "Dojazd do klienta",
+    count: list.filter((s) => (s.work_mode || []).includes(WORK_MODE_U_KLIENTA)).length,
+  });
+  return opcje;
 }

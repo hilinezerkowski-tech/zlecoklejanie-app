@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { cityFromAddress } from "@/lib/studio-location";
+import { labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 import { ReviewForm } from "./review-form";
 
 // Publiczny profil wykonawcy: /wykonawca/{slug}
@@ -16,6 +17,7 @@ type StudioProfile = {
   business_name: string | null;
   slug: string | null;
   description: string | null;
+  services: string[] | null;
   specializations: string[] | null;
   foil_brands: string[] | null;
   films_used: string[] | null;
@@ -51,7 +53,7 @@ async function getProfile(slug: string): Promise<StudioProfile | null> {
   const { data } = await supabase
     .from("studios")
     .select(
-      "id, business_name, slug, description, specializations, foil_brands, films_used, instagram, instagram_url, website, address, service_radius_km, years_experience, work_mode, provider_type, google_rating, google_reviews_count, portfolio"
+      "id, business_name, slug, description, services, specializations, foil_brands, films_used, instagram, instagram_url, website, address, service_radius_km, years_experience, work_mode, provider_type, google_rating, google_reviews_count, portfolio"
     )
     .eq("slug", slug)
     .eq("status", "active")
@@ -201,10 +203,23 @@ export default async function WykonawcaProfilePage({
           <p className="mt-6 whitespace-pre-line leading-relaxed">{p.description}</p>
         )}
 
+        {oczyscUslugi(p.services).length ? (
+          <section className="mt-8">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-chrom">
+              Usługi
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {oczyscUslugi(p.services).map((k) => (
+                <Chip key={k}>{labelUslugi(k)}</Chip>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         {p.specializations?.length ? (
           <section className="mt-8">
             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-chrom">
-              Co robi
+              {oczyscUslugi(p.services).length ? "Inne usługi" : "Co robi"}
             </h2>
             <div className="flex flex-wrap gap-2">
               {p.specializations.map((s) => (

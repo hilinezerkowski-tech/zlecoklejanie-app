@@ -105,6 +105,15 @@ eq("ustawUKlienta dodaje bez duplikatu", ustawUKlienta(["garaz", "u_klienta"], t
 eq("ustawUKlienta usuwa, reszta zostaje", ustawUKlienta(["garaz", "u_klienta"], false), ["garaz"]);
 eq("ustawUKlienta z null", ustawUKlienta(null, true), ["u_klienta"]);
 
+// 7. Scenariusz Bramki 3: Mini F56 S Gdańsk (zmiana koloru)
+const zlec = "zmiana_koloru";
+const wynik = (services) => studioPasuje(services, zlec);
+eq("Unique Car Studio → pasuje", wynik(["zmiana_koloru", "dechrom", "ppf", "reklama", "szyby", "detailing"]), "pasuje");
+eq("One Man Army (ppf, detailing) → nie robi", wynik(["ppf", "detailing"]), "nie_robi");
+eq("stare studio bez usług → do ręcznego sprawdzenia", wynik([]), "brak_uslug");
+eq("Luxecoat (zmiana_koloru, ppf…) → pasuje", wynik(["zmiana_koloru", "ppf", "szyby", "detailing"]), "pasuje");
+eq("zlecenie inne → bez filtra dla każdego", ["ppf", "detailing", []].map((x) => studioPasuje(x, "inne")), ["bez_filtra", "bez_filtra", "bez_filtra"]);
+
 if (bledy > 0) {
   console.error(`\n${bledy} błąd(ów) w mapowaniu usług.`);
   process.exit(1);
