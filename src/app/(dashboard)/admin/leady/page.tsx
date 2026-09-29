@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import LeadActions from "./lead-actions";
-import { mapLandingCheckboxy, maUslugeCore } from "@/lib/uslugi";
+import { etykietaPolaUslugi, mapLandingCheckboxy, maUslugeCore } from "@/lib/uslugi";
 import { BRAK_USLUG_REASON } from "@/lib/onboarding";
 
 // Leady zawierają dane kontaktowe — strona musi być zawsze świeża i nie może
@@ -197,7 +197,7 @@ export default async function LeadyPage({
                   {entries.map(([key, value]) => (
                     <div key={key} className="text-sm">
                       <dt className="text-xs text-brand-chrom mb-0.5">
-                        {fieldLabels[key] || key}
+                        {etykietaPolaUslugi(key) || fieldLabels[key] || key}
                       </dt>
                       <dd className="text-brand-kosc break-words whitespace-pre-wrap">
                         {key === "email" ? (

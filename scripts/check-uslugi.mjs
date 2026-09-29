@@ -15,6 +15,7 @@ import {
   oczyscUslugi,
   naruszaWymogUslug,
   ustawUKlienta,
+  etykietaPolaUslugi,
 } from "../src/lib/uslugi.ts";
 
 let bledy = 0;
@@ -113,6 +114,13 @@ eq("One Man Army (ppf, detailing) → nie robi", wynik(["ppf", "detailing"]), "n
 eq("stare studio bez usług → do ręcznego sprawdzenia", wynik([]), "brak_uslug");
 eq("Luxecoat (zmiana_koloru, ppf…) → pasuje", wynik(["zmiana_koloru", "ppf", "szyby", "detailing"]), "pasuje");
 eq("zlecenie inne → bez filtra dla każdego", ["ppf", "detailing", []].map((x) => studioPasuje(x, "inne")), ["bez_filtra", "bez_filtra", "bez_filtra"]);
+
+// 8. Etykiety pól leada (mail alertu, /admin/leady)
+eq("etykieta usl_zmiana_koloru", etykietaPolaUslugi("usl_zmiana_koloru"), "Robi: Zmiana koloru (full wrap)");
+eq("etykieta starego usl_wrap", etykietaPolaUslugi("usl_wrap"), "Robi: Zmiana koloru (full wrap)");
+eq("etykieta usl_mobilnie", etykietaPolaUslugi("usl_mobilnie"), "Dojeżdża do klienta");
+eq("etykieta obcego pola", etykietaPolaUslugi("nazwa"), null);
+eq("etykieta nieznanego usl_", etykietaPolaUslugi("usl_xyz"), null);
 
 if (bledy > 0) {
   console.error(`\n${bledy} błąd(ów) w mapowaniu usług.`);
