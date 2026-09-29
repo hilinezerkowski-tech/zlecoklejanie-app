@@ -87,6 +87,9 @@ export function maUslugeCore(services: readonly string[] | null | undefined): bo
   return (services ?? []).some((s) => (CORE_CODES as readonly string[]).includes(s));
 }
 
+/** Wartość filtra „Dojazd do klienta” w katalogu publicznym (?usluga=u_klienta). */
+export const FILTR_U_KLIENTA = WORK_MODE_U_KLIENTA;
+
 /** Komunikat walidacji — ten sam w panelu admina, profilu studia i onboardingu. */
 export const BLAD_BRAK_USLUG = "Zaznacz co najmniej jedną usługę (sam detailing nie wystarczy).";
 

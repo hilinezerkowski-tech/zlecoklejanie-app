@@ -4,7 +4,7 @@ import { useCallback, useState, useEffect } from "react";
 
 type Props = {
   miasta: string[];
-  uslugi: string[];
+  uslugi: { value: string; label: string; count: number }[];
   // Gdy true, filtr miasta jest ukryty (jesteśmy na stronie miasta)
   hideCity?: boolean;
 };
@@ -72,8 +72,8 @@ export function WykonawcyFilters({ miasta, uslugi, hideCity }: Props) {
       >
         <option value="">Każda usługa</option>
         {uslugi.map((u) => (
-          <option key={u} value={u}>
-            {u}
+          <option key={u.value} value={u.value}>
+            {u.label} ({u.count})
           </option>
         ))}
       </select>

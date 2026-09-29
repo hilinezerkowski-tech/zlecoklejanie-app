@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { cityFromAddress } from "@/lib/studio-location";
+import { labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 
 export type StudioCardData = {
   slug: string | null;
   business_name: string | null;
   description: string | null;
   address: string | null;
+  services?: string[] | null;
+  work_mode?: string[] | null;
+  /** „Inne usługi (opis)” — pokazywane tylko, gdy studio nie ma usług ze słownika. */
   specializations: string[] | null;
   provider_type: "studio" | "freelancer" | null;
   portfolio: { url: string; path: string }[] | null;
@@ -30,7 +34,9 @@ export function StudioCard({ s }: { s: StudioCardData }) {
   const city = cityFromAddress(s.address);
   const isFreelancer = s.provider_type === "freelancer";
   const cover = s.portfolio?.[0]?.url || null;
-  const specs = (s.specializations || []).slice(0, 3);
+  // Chipy z usług słownika; stare studia bez services pokazują dotychczasowy tekst („Inne”).
+  const slownik = oczyscUslugi(s.services).map(labelUslugi);
+  const specs = (slownik.length > 0 ? slownik : s.specializations || []).slice(0, 3);
 
   // Ocena: preferuj opinie z portalu, potem Google
   const rating =

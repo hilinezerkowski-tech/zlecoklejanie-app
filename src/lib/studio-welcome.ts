@@ -51,9 +51,10 @@ export async function sendStudioWelcome(
 
   const studioBody = `<p>Cześć,</p>
         <p>Konto dla <strong>${name}</strong> jest już aktywne. Kliknij poniżej — wejdziesz prosto do panelu, bez hasła.</p>
-        <p><strong>Zacznij od trzech rzeczy:</strong></p>
+        <p><strong>Zacznij od tego:</strong></p>
         <ul style="padding-left:18px;margin:8px 0;">
-          <li><strong>Uzupełnij profil</strong> — opis, specjalizacje, marki folii, Instagram. To widzi klient przy porównywaniu wycen.</li>
+          <li><strong>Zaznacz swoje usługi</strong> — po nich dobieramy zlecenia. Bez tego nie dostaniesz żadnego zapytania.</li>
+          <li><strong>Uzupełnij profil</strong> — opis, marki folii, Instagram. To widzi klient przy porównywaniu wycen.</li>
           <li><strong>Ustaw promień działania</strong> — dzięki temu dostajesz tylko zapytania z zasięgu.</li>
           <li><strong>Sprawdzaj zakładkę Zlecenia</strong> — powiadomienie o nowym zapytaniu przychodzi mailem.</li>
         </ul>
@@ -63,7 +64,8 @@ export async function sendStudioWelcome(
         <p>Konto aktywne — możesz zaczynać. Kliknij poniżej, wejdziesz do panelu bez wpisywania hasła.</p>
         <p><strong>Kilka rzeczy na start:</strong></p>
         <ul style="padding-left:18px;margin:8px 0;">
-          <li><strong>Uzupełnij profil</strong> — opis, specjalizacje, marki folii, które znasz, i oczywiście link do IG. Klienci porównują i to Twoje IG robi robotę.</li>
+          <li><strong>Zaznacz swoje usługi</strong> — po nich dobieramy zlecenia. Bez tego nie dostaniesz żadnego zapytania.</li>
+          <li><strong>Uzupełnij profil</strong> — opis, marki folii, które znasz, i oczywiście link do IG. Klienci porównują i to Twoje IG robi robotę.</li>
           <li><strong>Podaj zasięg</strong> — gdzie dojeżdżasz? Dzięki temu dostaniesz tylko zapytania, które mają sens geograficznie.</li>
           <li><strong>Pilnuj zakładki Zlecenia</strong> — jak coś wpłynie, dostaniesz maila.</li>
         </ul>

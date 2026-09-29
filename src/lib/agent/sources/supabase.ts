@@ -6,7 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AgentCard } from "@/app/(dashboard)/admin/agent/types";
 import { cityFromAddress, citySlug } from "@/lib/studio-location";
-import { labelUslugi, maUslugeCore, oczyscUslugi } from "@/lib/uslugi";
+import { labelUslugi, maUslugeCore, oczyscUslugi, studioPasuje } from "@/lib/uslugi";
 
 const scopeLabels: Record<string, string> = {
   full: "całe auto",
@@ -37,7 +37,7 @@ type OrderRow = {
   client: { email: string | null; full_name: string | null; phone: string | null } | null;
 };
 
-type ActiveStudio = { id: string; business_name: string | null; address: string | null };
+type ActiveStudio = { id: string; business_name: string | null; address: string | null; services: string[] | null };
 
 export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCard[]> {
   const { data: orders } = await admin
@@ -68,7 +68,7 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
   // Bez studiów z pauzą leadów — tak samo jak lista "Przypisz studio" w panelu zlecenia.
   const { data: studios } = await admin
     .from("studios")
-    .select("id, business_name, address")
+    .select("id, business_name, address, services")
     .eq("status", "active")
     .eq("is_paused", false)
     .is("deleted_at", null);
@@ -84,9 +84,15 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
 
   return unassigned.map((order) => {
     const slug = citySlug(order.city);
-    const matches = (slug ? byCity.get(slug) : undefined) ?? [];
+    const inCity = (slug ? byCity.get(slug) : undefined) ?? [];
+    // Dobór po usłudze (Faza 3): kandydaci tylko „pasujący”; studia bez usług osobno
+    // do ręcznego sprawdzenia; niepasujących nie proponujemy w ogóle.
+    const bezFiltra = studioPasuje([], order.service_type) === "bez_filtra";
+    const matches = bezFiltra ? [] : inCity.filter((s) => studioPasuje(s.services, order.service_type) === "pasuje");
+    const bezUslug = bezFiltra ? [] : inCity.filter((s) => studioPasuje(s.services, order.service_type) === "brak_uslug");
     const names = matches.slice(0, 3).map((s) => s.business_name || "bez nazwy");
     const nearest = matches.slice(0, 2).map((s) => s.id);
+    const uslugaTxt = labelUslugi(order.service_type);
 
     const carPart = [order.car_brand, order.car_model].filter(Boolean).join(" ");
     const client = order.client;
@@ -103,15 +109,25 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
       `Miasto: ${order.city}`,
       photoCount > 0 ? `Zdjęcia: ${photoCount} załącznik${photoCount === 1 ? "" : "i"}` : "Zdjęcia: brak",
       `Zlecenie czeka: ${ageLabel(order.created_at)}`,
-      `Aktywne studia w regionie: ${matches.length}${names.length ? ` (${names.join(", ")})` : ""}`,
+      bezFiltra
+        ? "Usługa nieokreślona — dobór ręczny"
+        : `Studia z usługą „${uslugaTxt}” w regionie: ${matches.length}${names.length ? ` (${names.join(", ")})` : ""}`,
+      ...(bezUslug.length > 0
+        ? [`Studia bez zaznaczonych usług w regionie (do sprawdzenia): ${bezUslug.map((s) => s.business_name || "bez nazwy").join(", ")}`]
+        : []),
     ];
 
-    const suggestion =
-      matches.length > 0
-        ? `W „${order.city}” działa${matches.length === 1 ? "" : "ją"} ${matches.length} aktywne studio${
+    const suggestion = bezFiltra
+      ? `Usługa „${uslugaTxt}” nie ma filtra studiów — dobierz wykonawcę ręcznie w panelu zlecenia.`
+      : matches.length > 0
+        ? `W „${order.city}” usługę „${uslugaTxt}” robi ${matches.length} studio${
             matches.length === 1 ? "" : "a"
           }. Przypisz najbliższe.`
-        : `Brak aktywnych studiów w „${order.city}” — sprawdź sąsiednie miasta ręcznie, zanim przypiszesz.`;
+        : `Brak studiów z usługą „${uslugaTxt}” w „${order.city}”${
+            bezUslug.length > 0
+              ? ` — sprawdź studia bez zaznaczonych usług: ${bezUslug.map((s) => s.business_name || "bez nazwy").join(", ")}`
+              : " — sprawdź sąsiednie miasta ręcznie"
+          }. Bez przycisku przypisania.`;
 
     const actions: AgentCard["actions"] = [];
     if (nearest.length > 0) {
