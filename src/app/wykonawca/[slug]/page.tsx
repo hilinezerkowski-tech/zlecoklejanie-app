@@ -55,6 +55,7 @@ async function getProfile(slug: string): Promise<StudioProfile | null> {
     )
     .eq("slug", slug)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
   return (data as StudioProfile) ?? null;
 }
