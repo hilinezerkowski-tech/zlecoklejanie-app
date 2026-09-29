@@ -4,7 +4,7 @@
 -- Wygenerowane: node scripts/automapowanie-uslug.mjs (reguły w skrypcie).
 -- Odpalić PO 024a. studios.specializations NIE jest zmieniane.
 -- Każdy UPDATE ma warunek services = '{}' — nie nadpisze usług zaznaczonych ręcznie.
--- Wiersze „do sprawdzenia” są na dole w komentarzu — decyzja Wojtka.
+-- 5 niejednoznacznych („zmiana koloru PPF”) rozstrzygnął Wojtek 29.09 — dopisane ręcznie po wygenerowaniu.
 -- =============================================
 
 BEGIN;
@@ -46,20 +46,14 @@ UPDATE studios SET services = ARRAY['zmiana_koloru', 'dechrom', 'ppf', 'szyby', 
 -- Dojazd do klienta → work_mode (cecha, nie usługa)
 UPDATE studios SET work_mode = array_append(COALESCE(work_mode, '{}'), 'u_klienta') WHERE id = 'e4e676be-08a8-4cd0-9c5d-70e691b9252e' AND NOT ('u_klienta' = ANY(COALESCE(work_mode, '{}'))); -- Piotr Krukowski
 
-COMMIT;
+-- Niejednoznaczne „zmiana koloru PPF” — decyzja Wojtka 29.09.2026
+UPDATE studios SET services = ARRAY['ppf', 'ppf_kolor', 'detailing']::TEXT[] WHERE id = '18ad9383-4508-4bb7-89da-ae60e1684d97' AND services = '{}'; -- DAB CAR („zmiana koloru PPF” = PPF kolorowy)
+UPDATE studios SET services = ARRAY['ppf', 'ppf_kolor', 'reklama', 'szyby']::TEXT[] WHERE id = 'dd14d857-8f3c-48f8-8ed0-bf6a0e612deb' AND services = '{}'; -- TintWrap („zmiana koloru PPF” = PPF kolorowy)
+UPDATE studios SET services = ARRAY['zmiana_koloru', 'ppf', 'szyby', 'detailing']::TEXT[] WHERE id = 'e7cba0fe-424c-4633-acae-49e953c94bbd' AND services = '{}'; -- Luxecoat („zmiana koloru / PPF” = dwie usługi)
+UPDATE studios SET services = ARRAY['zmiana_koloru', 'ppf', 'ppf_kolor', 'reklama', 'detailing']::TEXT[] WHERE id = '07da5a03-ba16-47cf-9610-4322fd97b739' AND services = '{}'; -- HotPoint PPF & Detailing („zmiana koloru PPF” = PPF kolorowy)
+UPDATE studios SET services = ARRAY['ppf', 'ppf_kolor', 'detailing']::TEXT[] WHERE id = '2bb976e9-2715-424a-8f9b-7b5a60a611a3' AND services = '{}'; -- AutoClinic („zmiana koloru PPF” = PPF kolorowy)
 
--- ---------------------------------------------
--- DO SPRAWDZENIA (niejednoznaczne) — odkomentuj wybraną wersję:
--- DAB CAR: PPF; zmiana koloru PPF; powłoki ceramiczne; szkolenia PPF
--- UPDATE studios SET services = ARRAY['ppf', 'ppf_kolor', 'detailing']::TEXT[] WHERE id = '18ad9383-4508-4bb7-89da-ae60e1684d97' AND services = '{}';
--- TintWrap: oklejanie reklamowe; projektowanie; PPF; zmiana koloru PPF; XPEL; przyciemnianie szyb; folie okienne; laminaty architektoniczne
--- UPDATE studios SET services = ARRAY['ppf', 'ppf_kolor', 'reklama', 'szyby']::TEXT[] WHERE id = 'dd14d857-8f3c-48f8-8ed0-bf6a0e612deb' AND services = '{}';
--- Luxecoat: zmiana koloru / PPF; przyciemnianie szyb/ korekta lakieru / ceramika
--- UPDATE studios SET services = ARRAY['ppf_kolor', 'szyby', 'detailing']::TEXT[] WHERE id = 'e7cba0fe-424c-4633-acae-49e953c94bbd' AND services = '{}';
--- HotPoint PPF & Detailing: PPF; zmiana koloru PPF; zmiana koloru vinyl; oklejenia reklamowe; korekty lakieru; powłoki elastomerowe; grafeny/ceramiki; usuwanie wgnieceń PDR
--- UPDATE studios SET services = ARRAY['zmiana_koloru', 'ppf', 'ppf_kolor', 'reklama', 'detailing']::TEXT[] WHERE id = '07da5a03-ba16-47cf-9610-4322fd97b739' AND services = '{}';
--- AutoClinic: Zmiana kolor PPF; folie ochronne PPF; powłoki ochronne; autodetailing
--- UPDATE studios SET services = ARRAY['ppf', 'ppf_kolor', 'detailing']::TEXT[] WHERE id = '2bb976e9-2715-424a-8f9b-7b5a60a611a3' AND services = '{}';
+COMMIT;
 
 -- Kontrola po odpaleniu:
 -- SELECT business_name, services, specializations FROM studios WHERE deleted_at IS NULL ORDER BY cardinality(services), business_name;
