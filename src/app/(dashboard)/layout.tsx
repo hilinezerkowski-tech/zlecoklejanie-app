@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/ui/sidebar";
+import { PublicFooterNote } from "@/components/ui/public-footer-note";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -49,6 +50,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       />
       <main className="flex-1 md:ml-64 p-4 pt-[72px] md:p-8 md:pt-8">
         {children}
+        {/* Punkt kontaktowy DSA art. 11–12. Bez linku do cookies: w panelach nie ma analityki. */}
+        <footer className="mt-12 border-t border-brand-border pt-2">
+          <PublicFooterNote cookies={false} />
+        </footer>
       </main>
     </div>
   );

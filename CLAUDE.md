@@ -29,6 +29,11 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 - Pola IG — wspólny helper (zasada z 28.09) obowiązuje też w nowych formularzach.
 - Kontrola mapowań: `node scripts/check-uslugi.mjs` (bez zależności, Node ≥ 23.6).
 
+## Analityka i zgoda
+
+- Analityka (GA4 `G-0PBM1QFP0L`, Clarity `y9anr0myh0`) wyłącznie po zgodzie (`zlec_cookie_consent`) i tylko na stronach publicznych (`/wykonawcy`, `/wykonawca/*` — layouty z `PublicAnalytics`). Nigdy w panelach (`/admin`, `/studio`, `/klient`, `/grafik`). Logika w `src/lib/analytics.ts` jest lustrem `assets/analytics.js` z landingu — zmieniasz jedno, zmień drugie.
+- Oceny Google są pokazywane osobno i opisane jako nieweryfikowane; nie trafiają do średniej portalu ani do JSON-LD.
+
 ## Powiadomienia — KRYTYCZNE
 
 Wszystkie powiadomienia platformy (nowe zlecenia, rejestracje studiów, zgłoszenia grafików, leady z landingu) muszą trafiać na **`zlecoklejaniepl@gmail.com`**, NIE na `hiline.zerkowski@gmail.com`.

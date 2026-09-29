@@ -89,6 +89,11 @@ export function MessageThread({
       <p className="text-sm font-medium mb-3">
         {viewer === "admin" ? "Rozmowa (podgląd)" : `Rozmowa z: ${otherPartyName}`}
       </p>
+      {/* Informacja o zapisie rozmów (zasada przejrzystości). Okres przechowywania dopisać po decyzji
+          właściciela portalu — do tego czasu zdania o okresie celowo nie ma (bez placeholdera na produkcji). */}
+      <p className="text-[11px] text-brand-chrom/70 mb-3">
+        Wiadomości są zapisywane. Administrator może je przeczytać przy zgłoszeniu, sporze lub podejrzeniu nadużycia.
+      </p>
 
       {messages.length > 0 ? (
         <div

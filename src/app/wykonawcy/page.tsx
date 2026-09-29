@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StudioCard } from "@/components/ui/studio-card";
+import { PublicFooterNote } from "@/components/ui/public-footer-note";
 import { WykonawcyFilters } from "@/components/ui/wykonawcy-filters";
 import {
   getCatalogStudios,
@@ -130,6 +131,13 @@ export default async function KatalogPage({
             ))}
           </div>
         )}
+
+        <div className="mt-10 border-t border-brand-border pt-4">
+          <p className="text-xs text-brand-chrom">
+            Opinie przy profilach dodają klienci portalu. Oceny z Google pokazujemy osobno i nie weryfikujemy ich.
+          </p>
+          <PublicFooterNote />
+        </div>
       </div>
 
       <script

@@ -38,12 +38,13 @@ export function StudioCard({ s }: { s: StudioCardData }) {
   const slownik = oczyscUslugi(s.services).map(labelUslugi);
   const specs = (slownik.length > 0 ? slownik : s.specializations || []).slice(0, 3);
 
-  // Ocena: preferuj opinie z portalu, potem Google
+  // Ocena z portalu (opinie klientów po moderacji) i ocena Google to DWIE różne rzeczy — nigdy
+  // nie mieszamy ich w jednej średniej. Google pokazujemy osobno i opisujemy jako nieweryfikowaną.
   const rating =
-    s.reviewCount && s.reviewCount > 0
-      ? { avg: s.reviewAvg as number, count: s.reviewCount, src: "opinii" }
-      : s.google_reviews_count && s.google_reviews_count > 0
-      ? { avg: s.google_rating as number, count: s.google_reviews_count, src: "Google" }
+    s.reviewCount && s.reviewCount > 0 ? { avg: s.reviewAvg as number, count: s.reviewCount } : null;
+  const google =
+    !rating && s.google_reviews_count && s.google_reviews_count > 0 && s.google_rating
+      ? { avg: s.google_rating, count: s.google_reviews_count }
       : null;
 
   return (
@@ -85,8 +86,13 @@ export function StudioCard({ s }: { s: StudioCardData }) {
             <span className="inline-flex items-center gap-1">
               <Stars value={rating.avg} />
               <span className="text-xs">
-                {rating.avg.toFixed(1)} ({rating.count} {rating.src})
+                {rating.avg.toFixed(1)} ({rating.count} opinii z portalu)
               </span>
+            </span>
+          )}
+          {google && (
+            <span className="text-xs" title="Ocena z Google — nieweryfikowana przez nas">
+              Google: {google.avg.toFixed(1).replace(".", ",")} ({google.count}) · nieweryfikowana
             </span>
           )}
         </div>
