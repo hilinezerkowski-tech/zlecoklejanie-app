@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { cityFromAddress } from "@/lib/studio-location";
+import { miastoStudia } from "@/lib/miasta";
 import { labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 
 export type StudioCardData = {
@@ -19,6 +19,8 @@ export type StudioCardData = {
   google_reviews_count: number | null;
   reviewAvg?: number | null;
   reviewCount?: number | null;
+  /** Miasto ustalone w katalogu (src/lib/miasta.ts); bez niego karta liczy je z adresu. */
+  cityName?: string | null;
 };
 
 function Stars({ value }: { value: number }) {
@@ -31,9 +33,10 @@ function Stars({ value }: { value: number }) {
   );
 }
 
-export function StudioCard({ s }: { s: StudioCardData }) {
+/** `km` — odległość od miasta strony (sekcja „W promieniu 50 km"). */
+export function StudioCard({ s, km }: { s: StudioCardData; km?: number }) {
   if (!s.slug) return null;
-  const city = cityFromAddress(s.address);
+  const city = s.cityName ?? miastoStudia(s.address)?.nazwa ?? null;
   const isFreelancer = s.provider_type === "freelancer";
   const cover = s.portfolio?.[0]?.url || s.cover_url || null;
   // Chipy z usług słownika; stare studia bez services pokazują dotychczasowy tekst („Inne”).
@@ -84,7 +87,12 @@ export function StudioCard({ s }: { s: StudioCardData }) {
         </div>
 
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-brand-chrom">
-          {city && <span>📍 {city}</span>}
+          {city && (
+            <span>
+              📍 {city}
+              {typeof km === "number" ? ` · ok. ${Math.max(km, 1)} km` : ""}
+            </span>
+          )}
           {rating && (
             <span className="inline-flex items-center gap-1">
               <Stars value={rating.avg} />

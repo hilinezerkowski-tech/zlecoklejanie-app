@@ -64,3 +64,12 @@ Resend, nadawca `powiadomienia@send.zlecoklejanie.pl`, domena zweryfikowana. Kon
 ## Weryfikacja
 
 Po każdym pushu na `main`: sprawdzić deploy na Vercelu i przeklikać zmienioną ścieżkę na produkcji.
+
+## Katalog publiczny — SEO (07.10.2026)
+
+- Miasto wykonawcy na stronach publicznych: `miastoStudia()` z `src/lib/miasta.ts` (odporne na bałagan w adresach, kanoniczna nazwa, miejscownik `wMiescie()`). `cityFromAddress`/`citySlug` z `studio-location.ts` zostają dla doboru studiów i agenta — nie mieszać.
+- Nowe miasto w katalogu: dopisz wpis do `MIASTA` w `miasta.ts` (nazwa + „w …"); bez wpisu strona działa, ale z neutralnym „w miejscowości X".
+- Strony miast buduje `stronyMiast()` (`src/lib/catalog-geo.ts`, tylko serwer — wciąga 7 MB danych geo): wykonawcy lokalni + w promieniu 50 km, link do cennika na landingu. 10 miast z cennikami ma stronę także bez lokalnego wykonawcy, jeśli ktoś jest w promieniu.
+- `noindex` + poza sitemapą: profil „pusty" (`czyPustyProfil` w `catalog.ts` — bez usług, opisu i zdjęć) oraz strona miasta, na której nie ma żadnego uzupełnionego profilu. Wraca do indeksu samo po uzupełnieniu.
+- `/sitemap.xml` i `/robots.txt` są publiczne w middleware (sitemapa idzie pod `zlecoklejanie.pl/sitemap-wykonawcy.xml` przez proxy Netlify). `robots.ts` blokuje domenę vercel.app, ale MUSI przepuszczać `/_next/static/` — stamtąd katalog pod zlecoklejanie.pl ładuje CSS/JS.
+- Lustro tych reguł po stronie landingu: `D:\zlecoklejanie\scripts\seo-wykonawcy.mjs` (lista wykonawców na 30 podstronach usług). Zmiana reguły tu = zmiana tam.
