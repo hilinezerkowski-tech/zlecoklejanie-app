@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { cityFromAddress } from "@/lib/studio-location";
+import Link from "next/link";
+import { czyPustyProfil } from "@/lib/catalog";
+import { linkiCennikow, miastoStudia, wMiescie } from "@/lib/miasta";
 import { labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 import { ReviewForm } from "./review-form";
 import { PublicFooterNote } from "@/components/ui/public-footer-note";
@@ -12,6 +14,7 @@ import { PublicFooterNote } from "@/components/ui/public-footer-note";
 // dla wrappera akcent na dojazd i portfolio z Instagrama.
 
 const SITE_URL = "https://zlecoklejanie.pl";
+const OG_IMAGE = `${SITE_URL}/img/og-image.png`;
 
 type StudioProfile = {
   id: string;
@@ -110,28 +113,47 @@ export async function generateMetadata({
   if (!p) return { title: "Wykonawca nie znaleziony | ZlecOklejanie.pl" };
 
   const name = p.business_name || "Wykonawca";
-  const city = p.address || "";
+  const city = miastoStudia(p.address)?.nazwa ?? null;
   const isFreelancer = p.provider_type === "freelancer";
   const usluga = isFreelancer ? "oklejanie samochodów" : "studio oklejania i PPF";
 
-  const title = city
-    ? `${name} — ${usluga} ${city} | ZlecOklejanie.pl`
-    : `${name} — ${usluga} | ZlecOklejanie.pl`;
+  // Tytuł do ok. 65 znaków: przy długiej nazwie firmy najpierw odpada sufiks portalu,
+  // potem opis usługi (nazwa + miasto zostają zawsze).
+  const warianty = [
+    `${name} — ${usluga}${city ? `, ${city}` : ""} | ZlecOklejanie.pl`,
+    `${name} — ${usluga}${city ? `, ${city}` : ""}`,
+    city ? `${name} — ${city}` : name,
+  ];
+  const title = warianty.find((t) => t.length <= 65) ?? warianty[warianty.length - 1];
 
+  // Opis: własny opis wykonawcy, jeśli jest sensownej długości; inaczej zdanie z usług i miasta.
+  const uslugi = oczyscUslugi(p.services).map(labelUslugi);
+  const wlasny = (p.description || "").replace(/\s+/g, " ").trim();
   const desc =
-    p.description?.slice(0, 155) ||
-    `${name} — ${usluga}${city ? ` w ${city}` : ""}. Poproś o wycenę przez ZlecOklejanie.pl.`;
+    wlasny.length >= 70
+      ? wlasny.length > 155
+        ? `${wlasny.slice(0, 152).trimEnd()}…`
+        : wlasny
+      : `${name} — ${usluga}${city ? ` ${wMiescie(city)}` : ""}.${
+          uslugi.length ? ` Usługi: ${uslugi.slice(0, 4).join("; ")}.` : ""
+        } Poproś o bezpłatną wycenę przez ZlecOklejanie.pl.`;
+
+  const image = p.portfolio?.[0]?.url || OG_IMAGE;
 
   return {
     title,
     description: desc,
     alternates: { canonical: `${SITE_URL}/wykonawca/${p.slug}` },
+    // Profil z samą nazwą i miastem nie idzie do indeksu, dopóki wykonawca go nie uzupełni.
+    ...(czyPustyProfil(p) ? { robots: { index: false, follow: true } } : {}),
     openGraph: {
       title,
       description: desc,
       url: `${SITE_URL}/wykonawca/${p.slug}`,
       type: "profile",
+      images: [image],
     },
+    twitter: { card: "summary_large_image", title, description: desc, images: [image] },
   };
 }
 
@@ -164,6 +186,20 @@ export default async function WykonawcaProfilePage({
   const foils = (p.films_used?.length ? p.films_used : p.foil_brands) || [];
   const modes = (p.work_mode || []).map((m) => WORK_MODE_LABELS[m] || m);
   const quoteUrl = `${SITE_URL}/?wykonawca=${encodeURIComponent(p.slug || "")}#zlecenie`;
+  const miasto = miastoStudia(p.address);
+  const cenniki = miasto ? linkiCennikow(miasto.slug) : [];
+
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Wykonawcy", item: `${SITE_URL}/wykonawcy` },
+      ...(miasto
+        ? [{ "@type": "ListItem", position: 2, name: miasto.nazwa, item: `${SITE_URL}/wykonawcy/${miasto.slug}` }]
+        : []),
+      { "@type": "ListItem", position: miasto ? 3 : 2, name, item: `${SITE_URL}/wykonawca/${p.slug}` },
+    ],
+  };
 
   return (
     <main className="min-h-screen bg-brand-grafit text-brand-kosc">
@@ -184,6 +220,20 @@ export default async function WykonawcaProfilePage({
       </header>
 
       <div className="mx-auto max-w-3xl px-4 py-8">
+        <nav className="mb-4 text-sm text-brand-chrom">
+          <Link href="/wykonawcy" className="hover:text-brand-lime">Wykonawcy</Link>
+          {miasto && (
+            <>
+              <span className="mx-2">/</span>
+              <Link href={`/wykonawcy/${miasto.slug}`} className="hover:text-brand-lime">
+                {miasto.nazwa}
+              </Link>
+            </>
+          )}
+          <span className="mx-2">/</span>
+          <span className="text-brand-kosc">{name}</span>
+        </nav>
+
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-brand-lime px-3 py-1 text-xs font-bold uppercase tracking-wide text-brand-grafit">
             {isFreelancer ? "Wrapper mobilny" : "Studio"}
@@ -320,7 +370,7 @@ export default async function WykonawcaProfilePage({
           <p className="mb-4 text-xs leading-relaxed text-brand-chrom">
             Opinie dodają klienci. Nie sprawdzamy, czy autor skorzystał z usługi. Każdą opinię przed publikacją
             czyta administrator. Nie usuwamy opinii za to, że są negatywne.{" "}
-            <a href={`${SITE_URL}/regulamin.html`} className="underline">
+            <a href={`${SITE_URL}/regulamin`} className="underline">
               Zasady w regulaminie
             </a>
             .
@@ -377,6 +427,44 @@ export default async function WykonawcaProfilePage({
           <ReviewForm studioId={p.id} />
         </section>
 
+        <section className="mt-10">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-brand-chrom">
+            Ceny i inni wykonawcy
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {miasto && (
+              <li>
+                <Link
+                  href={`/wykonawcy/${miasto.slug}`}
+                  className="inline-block rounded-full border border-brand-border px-3 py-1 text-sm text-brand-kosc hover:border-brand-lime hover:text-brand-lime"
+                >
+                  Wykonawcy {wMiescie(miasto.nazwa)} i w okolicy
+                </Link>
+              </li>
+            )}
+            {cenniki.map((c) => (
+              <li key={c.href}>
+                <a
+                  href={c.href}
+                  className="inline-block rounded-full border border-brand-border px-3 py-1 text-sm text-brand-kosc hover:border-brand-lime hover:text-brand-lime"
+                >
+                  {c.label}
+                </a>
+              </li>
+            ))}
+            {cenniki.length === 0 && (
+              <li>
+                <a
+                  href={`${SITE_URL}/blog/ceny-oklejania-2026`}
+                  className="inline-block rounded-full border border-brand-border px-3 py-1 text-sm text-brand-kosc hover:border-brand-lime hover:text-brand-lime"
+                >
+                  Ile kosztuje oklejenie auta — poradnik
+                </a>
+              </li>
+            )}
+          </ul>
+        </section>
+
         <section className="mt-10 rounded-2xl bg-brand-lime p-6 text-brand-grafit">
           <h2 className="text-xl font-bold">
             Chcesz wycenę {isFreelancer ? "od tego wrappera" : "od tego studia"}?
@@ -402,13 +490,14 @@ export default async function WykonawcaProfilePage({
             </a>
             . Wykonawca odpowiada samodzielnie za wycenę, realizację i rozliczenie
             usługi.{" "}
-            <a href={`${SITE_URL}/regulamin.html`} className="underline">
+            <a href={`${SITE_URL}/regulamin`} className="underline">
               Regulamin
             </a>
           </p>
           <PublicFooterNote />
         </footer>
       </div>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
       {/* Structured data — LocalBusiness */}
       <script
         type="application/ld+json"
@@ -418,8 +507,8 @@ export default async function WykonawcaProfilePage({
             "@type": isFreelancer ? "AutoDetailing" : "AutoBodyShop",
             name,
             url: `${SITE_URL}/wykonawca/${p.slug}`,
-            ...(cityFromAddress(p.address)
-              ? { address: { "@type": "PostalAddress", addressLocality: cityFromAddress(p.address), addressCountry: "PL" } }
+            ...(miasto
+              ? { address: { "@type": "PostalAddress", addressLocality: miasto.nazwa, addressCountry: "PL" } }
               : {}),
             ...(p.portfolio?.[0]?.url ? { image: p.portfolio[0].url } : {}),
             // Tylko opinie zebrane na portalu (od klientów, po moderacji). Oceny Google NIE trafiają

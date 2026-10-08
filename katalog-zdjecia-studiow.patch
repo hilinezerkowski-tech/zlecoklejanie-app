@@ -1,0 +1,302 @@
+From 6bcee0d1c72c5799b31cdf1b18b6a8cbe625d535 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 29 Sep 2026 21:17:15 +0200
+Subject: [PATCH] =?UTF-8?q?feat(katalog):=20zdj=C4=99cia=20studi=C3=B3w=20?=
+ =?UTF-8?q?na=20kartach=20=E2=80=94=20fallback=20og:image=20ze=20strony=20?=
+ =?UTF-8?q?www=20+=20placeholder?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LL5UWmBj4bgcdlkyejuujt
+---
+ .../(dashboard)/admin/studia/cover-actions.ts | 58 +++++++++++++++
+ .../admin/studia/fetch-covers-button.tsx      | 28 +++++++
+ src/app/(dashboard)/admin/studia/page.tsx     | 10 ++-
+ src/components/ui/studio-card.tsx             | 11 ++-
+ src/lib/catalog.ts                            |  2 +-
+ src/lib/studio-cover.ts                       | 74 +++++++++++++++++++
+ supabase/migrations/028_studio_cover.sql      | 11 +++
+ 7 files changed, 186 insertions(+), 8 deletions(-)
+ create mode 100644 src/app/(dashboard)/admin/studia/cover-actions.ts
+ create mode 100644 src/app/(dashboard)/admin/studia/fetch-covers-button.tsx
+ create mode 100644 src/lib/studio-cover.ts
+ create mode 100644 supabase/migrations/028_studio_cover.sql
+
+diff --git a/src/app/(dashboard)/admin/studia/cover-actions.ts b/src/app/(dashboard)/admin/studia/cover-actions.ts
+new file mode 100644
+index 0000000..f78b3d4
+--- /dev/null
++++ b/src/app/(dashboard)/admin/studia/cover-actions.ts
+@@ -0,0 +1,58 @@
++"use server";
++
++import { redirect } from "next/navigation";
++import { revalidatePath } from "next/cache";
++import { createClient } from "@/lib/supabase/server";
++import { createAdminClient } from "@/lib/supabase/admin";
++import { fetchOgImage } from "@/lib/studio-cover";
++
++async function requireAdmin() {
++  const supabase = await createClient();
++  const {
++    data: { user },
++  } = await supabase.auth.getUser();
++  if (!user) redirect("/login");
++  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
++  if (profile?.role !== "admin") redirect("/");
++}
++
++export type CoverResult = { ok: boolean; found: number; checked: number; missing: string[]; error?: string };
++
++/**
++ * Pobiera og:image ze strony www aktywnych studiów, które nie mają ani portfolio, ani okładki.
++ * Zapisuje do studios.cover_url. Studia bez strony lub bez og:image zostają na placeholderze.
++ */
++export async function fetchMissingCovers(): Promise<CoverResult> {
++  await requireAdmin();
++  const admin = createAdminClient();
++  const { data, error } = await admin
++    .from("studios")
++    .select("id, business_name, website, portfolio, cover_url")
++    .eq("status", "active")
++    .is("deleted_at", null)
++    .not("website", "is", null);
++  if (error) return { ok: false, found: 0, checked: 0, missing: [], error: error.message };
++
++  const todo = (data ?? []).filter(
++    (s) => s.website && !s.cover_url && !(Array.isArray(s.portfolio) && s.portfolio.length > 0)
++  );
++  let found = 0;
++  const missing: string[] = [];
++  for (const s of todo) {
++    let url: string | null = null;
++    try {
++      url = await fetchOgImage(s.website as string);
++    } catch {
++      url = null;
++    }
++    await admin
++      .from("studios")
++      .update({ cover_url: url, cover_source: url ? "og:image" : null, cover_checked_at: new Date().toISOString() })
++      .eq("id", s.id);
++    if (url) found++;
++    else missing.push(s.business_name || s.id);
++  }
++  revalidatePath("/wykonawcy");
++  revalidatePath("/admin/studia");
++  return { ok: true, found, checked: todo.length, missing };
++}
+diff --git a/src/app/(dashboard)/admin/studia/fetch-covers-button.tsx b/src/app/(dashboard)/admin/studia/fetch-covers-button.tsx
+new file mode 100644
+index 0000000..435af33
+--- /dev/null
++++ b/src/app/(dashboard)/admin/studia/fetch-covers-button.tsx
+@@ -0,0 +1,28 @@
++"use client";
++
++import { useState, useTransition } from "react";
++import { fetchMissingCovers, type CoverResult } from "./cover-actions";
++
++export function FetchCoversButton() {
++  const [pending, start] = useTransition();
++  const [res, setRes] = useState<CoverResult | null>(null);
++  return (
++    <div className="flex flex-col items-end gap-1">
++      <button
++        type="button"
++        disabled={pending}
++        onClick={() => start(async () => setRes(await fetchMissingCovers()))}
++        className="rounded-lg border border-brand-border px-3 py-2 text-sm font-semibold text-brand-kosc hover:border-brand-lime disabled:opacity-50"
++      >
++        {pending ? "Pobieram zdjęcia…" : "Pobierz zdjęcia ze stron www"}
++      </button>
++      {res && (
++        <p className="max-w-xs text-right text-xs text-brand-chrom">
++          {res.ok
++            ? `Sprawdzono ${res.checked}, znaleziono ${res.found}.${res.missing.length ? ` Bez zdjęcia: ${res.missing.join(", ")}.` : ""}`
++            : `Błąd: ${res.error}`}
++        </p>
++      )}
++    </div>
++  );
++}
+diff --git a/src/app/(dashboard)/admin/studia/page.tsx b/src/app/(dashboard)/admin/studia/page.tsx
+index f7bf715..72b0fed 100644
+--- a/src/app/(dashboard)/admin/studia/page.tsx
++++ b/src/app/(dashboard)/admin/studia/page.tsx
+@@ -1,6 +1,7 @@
+ import Link from "next/link";
+ import { createClient } from "@/lib/supabase/server";
+ import { AddStudioForm } from "./add-studio-form";
++import { FetchCoversButton } from "./fetch-covers-button";
+ import { StudioActions } from "./studio-actions";
+ import { RestoreStudioButton, StudioManage } from "./studio-manage";
+ import { SearchList } from "@/components/ui/search-list";
+@@ -75,9 +76,12 @@ export default async function StudiaPage({
+     <div>
+       <div className="flex items-center justify-between mb-8">
+         <h1 className="text-2xl font-bold">Studia</h1>
+-        <span className="text-sm text-brand-chrom">
+-          {studios?.length || 0} studiów
+-        </span>
++        <div className="flex items-start gap-4">
++          <FetchCoversButton />
++          <span className="pt-2 text-sm text-brand-chrom">
++            {studios?.length || 0} studiów
++          </span>
++        </div>
+       </div>
+ 
+       {/* Filtry */}
+diff --git a/src/components/ui/studio-card.tsx b/src/components/ui/studio-card.tsx
+index 0b072db..47aa142 100644
+--- a/src/components/ui/studio-card.tsx
++++ b/src/components/ui/studio-card.tsx
+@@ -13,6 +13,8 @@ export type StudioCardData = {
+   specializations: string[] | null;
+   provider_type: "studio" | "freelancer" | null;
+   portfolio: { url: string; path: string }[] | null;
++  /** og:image ze strony www studia — tylko fallback, gdy portfolio puste. */
++  cover_url?: string | null;
+   google_rating: number | null;
+   google_reviews_count: number | null;
+   reviewAvg?: number | null;
+@@ -33,7 +35,7 @@ export function StudioCard({ s }: { s: StudioCardData }) {
+   if (!s.slug) return null;
+   const city = cityFromAddress(s.address);
+   const isFreelancer = s.provider_type === "freelancer";
+-  const cover = s.portfolio?.[0]?.url || null;
++  const cover = s.portfolio?.[0]?.url || s.cover_url || null;
+   // Chipy z usług słownika; stare studia bez services pokazują dotychczasowy tekst („Inne”).
+   const slownik = oczyscUslugi(s.services).map(labelUslugi);
+   const specs = (slownik.length > 0 ? slownik : s.specializations || []).slice(0, 3);
+@@ -62,10 +64,11 @@ export function StudioCard({ s }: { s: StudioCardData }) {
+             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+           />
+         ) : (
+-          <div className="flex h-full w-full items-center justify-center text-brand-border">
+-            <span className="text-4xl font-black opacity-40">
+-              {(s.business_name || "?").charAt(0).toUpperCase()}
++          <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-brand-grafit to-brand-grafit-light">
++            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-lime text-3xl font-black text-brand-grafit">
++              Z
+             </span>
++            <span className="text-xs text-brand-chrom">Zdjęcia wkrótce</span>
+           </div>
+         )}
+         <span className="absolute left-3 top-3 rounded-full bg-brand-grafit/85 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-brand-lime backdrop-blur">
+diff --git a/src/lib/catalog.ts b/src/lib/catalog.ts
+index 79d474d..65bc05e 100644
+--- a/src/lib/catalog.ts
++++ b/src/lib/catalog.ts
+@@ -16,7 +16,7 @@ export async function getCatalogStudios(): Promise<CatalogStudio[]> {
+   const { data: studios } = await supabase
+     .from("studios")
+     .select(
+-      "id, slug, business_name, description, address, services, work_mode, specializations, provider_type, portfolio, google_rating, google_reviews_count"
++      "id, slug, business_name, description, address, services, work_mode, specializations, provider_type, portfolio, google_rating, google_reviews_count, cover_url"
+     )
+     .eq("status", "active")
+     .is("deleted_at", null);
+diff --git a/src/lib/studio-cover.ts b/src/lib/studio-cover.ts
+new file mode 100644
+index 0000000..56da778
+--- /dev/null
++++ b/src/lib/studio-cover.ts
+@@ -0,0 +1,74 @@
++import { lookup } from "node:dns/promises";
++import { isIP } from "node:net";
++
++const TIMEOUT_MS = 8000;
++const MAX_HTML_BYTES = 512 * 1024;
++const UA = "Mozilla/5.0 (compatible; ZlecOklejanieBot/1.0; +https://zlecoklejanie.pl)";
++
++// Ochrona przed SSRF: tylko publiczne adresy http(s), bez localhost/sieci prywatnych.
++function isPrivateIp(ip: string): boolean {
++  if (ip.includes(":")) {
++    const l = ip.toLowerCase();
++    return l === "::1" || l.startsWith("fc") || l.startsWith("fd") || l.startsWith("fe80") || l.startsWith("::ffff:127.") || l.startsWith("::ffff:10.") || l.startsWith("::ffff:192.168.");
++  }
++  const [a, b] = ip.split(".").map(Number);
++  return (
++    a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) ||
++    (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224
++  );
++}
++
++async function assertPublicUrl(raw: string): Promise<URL> {
++  const u = new URL(raw);
++  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Zły protokół.");
++  const host = u.hostname;
++  if (host === "localhost" || host.endsWith(".local")) throw new Error("Adres lokalny.");
++  const ips = isIP(host) ? [host] : (await lookup(host, { all: true })).map((r) => r.address);
++  if (ips.length === 0 || ips.some(isPrivateIp)) throw new Error("Adres prywatny.");
++  return u;
++}
++
++async function fetchLimited(url: string, init?: RequestInit) {
++  const u = await assertPublicUrl(url);
++  return fetch(u, {
++    ...init,
++    redirect: "follow",
++    signal: AbortSignal.timeout(TIMEOUT_MS),
++    headers: { "user-agent": UA, accept: "text/html,image/*;q=0.8", ...(init?.headers || {}) },
++  });
++}
++
++function pickMeta(html: string, keys: string[]): string | null {
++  for (const key of keys) {
++    const re = new RegExp(
++      `<meta[^>]+(?:property|name)=["']${key}["'][^>]*content=["']([^"']+)["']|<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${key}["']`,
++      "i"
++    );
++    const m = html.match(re);
++    const v = m?.[1] || m?.[2];
++    if (v) return v.replace(/&amp;/g, "&").trim();
++  }
++  return null;
++}
++
++/** Zwraca bezwzględny URL og:image / twitter:image ze strony albo null. */
++export async function fetchOgImage(website: string): Promise<string | null> {
++  const start = /^https?:\/\//i.test(website) ? website : `https://${website}`;
++  const res = await fetchLimited(start);
++  if (!res.ok) return null;
++  const buf = await res.arrayBuffer();
++  const html = new TextDecoder("utf-8").decode(buf.slice(0, MAX_HTML_BYTES));
++  const raw = pickMeta(html, ["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"]);
++  if (!raw) return null;
++  let abs: string;
++  try {
++    abs = new URL(raw, res.url).toString();
++  } catch {
++    return null;
++  }
++  if (!abs.startsWith("https://")) return null; // http zablokuje mixed-content na stronie
++  // Sprawdź, że to faktycznie obraz i że da się go pobrać.
++  const head = await fetchLimited(abs, { method: "GET", headers: { range: "bytes=0-1023" } });
++  const type = head.headers.get("content-type") || "";
++  return head.ok && type.startsWith("image/") ? abs : null;
++}
+diff --git a/supabase/migrations/028_studio_cover.sql b/supabase/migrations/028_studio_cover.sql
+new file mode 100644
+index 0000000..1417e2d
+--- /dev/null
++++ b/supabase/migrations/028_studio_cover.sql
+@@ -0,0 +1,11 @@
++-- =============================================
++-- 028_studio_cover.sql
++-- Zdjęcie okładkowe studia do karty w katalogu (/wykonawcy), gdy studio nie ma jeszcze portfolio.
++-- cover_url = og:image ze strony www studia (pobierane przez admina), cover_source = skąd.
++-- Portfolio wgrane przez studio ma zawsze pierwszeństwo przed cover_url.
++-- Idempotentna, nic nie kasuje.
++-- =============================================
++ALTER TABLE public.studios ADD COLUMN IF NOT EXISTS cover_url text;
++ALTER TABLE public.studios ADD COLUMN IF NOT EXISTS cover_source text;
++ALTER TABLE public.studios ADD COLUMN IF NOT EXISTS cover_checked_at timestamptz;
++COMMENT ON COLUMN public.studios.cover_url IS 'Okładka karty katalogu z og:image strony www studia. Fallback, gdy portfolio puste.';
+-- 
+2.43.0
+

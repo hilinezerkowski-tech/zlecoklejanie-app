@@ -10,10 +10,12 @@ import {
   cityIndex,
   serviceIndex,
 } from "@/lib/catalog";
+import { listItemLd, stronyMiast } from "@/lib/catalog-geo";
 
 export const revalidate = 3600; // ISR: odśwież katalog co godzinę
 
 const SITE_URL = "https://zlecoklejanie.pl";
+const OG_IMAGE = `${SITE_URL}/img/og-image.png`;
 
 export const metadata: Metadata = {
   title: "Katalog wykonawców — oklejanie aut, PPF, branding | ZlecOklejanie.pl",
@@ -26,7 +28,9 @@ export const metadata: Metadata = {
       "Studia oklejania i wrapperzy mobilni z całej Polski — realizacje, opinie, usługi.",
     url: `${SITE_URL}/wykonawcy`,
     type: "website",
+    images: [OG_IMAGE],
   },
+  twitter: { card: "summary_large_image", images: [OG_IMAGE] },
 };
 
 export default async function KatalogPage({
@@ -38,6 +42,8 @@ export default async function KatalogPage({
   const all = await getCatalogStudios();
   const miasta = cityIndex(all);
   const uslugi = serviceIndex(all);
+  // Wszystkie strony miast (także duże miasta bez własnego wykonawcy, ale z wykonawcami w okolicy).
+  const strony = stronyMiast(all);
 
   const filtered = sortStudios(
     filterStudios(all, {
@@ -53,12 +59,7 @@ export default async function KatalogPage({
     "@type": "ItemList",
     name: "Wykonawcy oklejania pojazdów — ZlecOklejanie.pl",
     numberOfItems: filtered.length,
-    itemListElement: filtered.slice(0, 30).map((s, i) => ({
-      "@type": "ListItem",
-      position: i + 1,
-      url: `${SITE_URL}/wykonawca/${s.slug}`,
-      name: s.business_name ?? "Wykonawca",
-    })),
+    itemListElement: filtered.map((s, i) => listItemLd(s, i + 1, SITE_URL)),
   };
 
   return (
@@ -131,6 +132,44 @@ export default async function KatalogPage({
             ))}
           </div>
         )}
+
+        <section className="mt-12">
+          <h2 className="text-xl font-bold">Wykonawcy według miasta</h2>
+          <p className="mt-1 max-w-2xl text-sm text-brand-chrom">
+            Każda strona miasta pokazuje wykonawców z tej miejscowości i z promienia 50 km.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {strony.map((m) => (
+              <Link
+                key={m.slug}
+                href={`/wykonawcy/${m.slug}`}
+                className="rounded-full border border-brand-border px-3 py-1 text-sm text-brand-chrom hover:border-brand-lime hover:text-brand-lime"
+              >
+                {m.name}
+                {m.lokalne.length > 0 ? ` (${m.lokalne.length})` : " (okolice)"}
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-xl font-bold">Ile kosztuje oklejenie auta?</h2>
+          <p className="mt-1 max-w-2xl text-sm text-brand-chrom">
+            Zanim poprosisz o wycenę, sprawdź orientacyjne widełki:{" "}
+            <a href={`${SITE_URL}/uslugi/`} className="text-brand-lime underline">
+              cenniki oklejania, folii PPF i brandingu flot w 10 miastach
+            </a>
+            , poradnik{" "}
+            <a href={`${SITE_URL}/blog/ceny-oklejania-2026`} className="text-brand-lime underline">
+              ile kosztuje oklejenie auta
+            </a>{" "}
+            oraz porównanie{" "}
+            <a href={`${SITE_URL}/blog/ppf-czy-powloka-ceramiczna`} className="text-brand-lime underline">
+              PPF czy powłoka ceramiczna
+            </a>
+            .
+          </p>
+        </section>
 
         <div className="mt-10 border-t border-brand-border pt-4">
           <p className="text-xs text-brand-chrom">

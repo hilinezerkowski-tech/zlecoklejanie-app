@@ -1,5 +1,5 @@
 import { createPublicClient } from "@/lib/supabase/public";
-import { cityFromAddress, citySlug } from "@/lib/studio-location";
+import { miastoStudia } from "@/lib/miasta";
 import type { StudioCardData } from "@/components/ui/studio-card";
 import { FILTR_U_KLIENTA, USLUGI, WORK_MODE_U_KLIENTA, isUslugaKod, labelUslugi, oczyscUslugi } from "@/lib/uslugi";
 
@@ -16,7 +16,7 @@ export async function getCatalogStudios(): Promise<CatalogStudio[]> {
   const { data: studios } = await supabase
     .from("studios")
     .select(
-      "id, slug, business_name, description, address, services, work_mode, specializations, provider_type, portfolio, google_rating, google_reviews_count"
+      "id, slug, business_name, description, address, services, work_mode, specializations, provider_type, portfolio, google_rating, google_reviews_count, cover_url"
     )
     .eq("status", "active")
     .is("deleted_at", null);
@@ -44,15 +44,34 @@ export async function getCatalogStudios(): Promise<CatalogStudio[]> {
     .filter((s) => s.slug)
     .map((s) => {
       const a = agg.get(s.id);
-      const cityName = cityFromAddress(s.address);
+      // Miasto do wyświetlenia i do strony miasta — odporne na bałagan w adresach (src/lib/miasta.ts).
+      const miasto = miastoStudia(s.address);
       return {
         ...s,
         reviewAvg: a ? a.sum / a.n : null,
         reviewCount: a ? a.n : 0,
-        cityName,
-        citySlugValue: citySlug(s.address),
+        cityName: miasto?.nazwa ?? null,
+        citySlugValue: miasto?.slug ?? null,
       };
     });
+}
+
+// „Pusty" profil = sama nazwa i miasto: bez usług ze słownika, bez opisu, bez zdjęć.
+// Takich stron nie wystawiamy do indeksu (meta robots noindex + poza sitemapą) — cienkie
+// podstrony obniżają ocenę całej witryny. Profil wraca do indeksu sam, gdy wykonawca go uzupełni.
+export function czyPustyProfil(s: {
+  services?: string[] | null;
+  specializations?: string[] | null;
+  description?: string | null;
+  portfolio?: unknown[] | null;
+  cover_url?: string | null;
+}): boolean {
+  if (oczyscUslugi(s.services).length > 0) return false;
+  if ((s.specializations || []).length > 0) return false;
+  if ((s.description || "").trim().length >= 40) return false;
+  if ((s.portfolio || []).length > 0) return false;
+  if (s.cover_url) return false;
+  return true;
 }
 
 // Sortowanie: najpierw z portfolio i ocenami (pełniejsze profile wyżej)

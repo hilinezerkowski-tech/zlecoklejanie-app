@@ -32,7 +32,9 @@ export async function middleware(request: NextRequest) {
   //  /api/lead-alert musi ominac guard. Endpoint broni sie sam (staly odbiorca,
   //  tresc z bazy po ID, tylko swieze leady) — patrz src/app/api/lead-alert.
   // /api/cron/* broni się sam (CRON_SECRET); /o/<token> = odpowiedź studia z linku (HMAC, bez logowania).
-  const publicPaths = ["/login", "/auth/callback", "/auth/confirm", "/api/lead-alert", "/api/cron", "/o/", "/wykonawca", "/wykonawcy"];
+  // /sitemap.xml i /robots.txt muszą być publiczne: sitemapa katalogu jest serwowana pod
+  //  zlecoklejanie.pl/sitemap-wykonawcy.xml (proxy Netlify) — za logowaniem zwracała 404.
+  const publicPaths = ["/login", "/auth/callback", "/auth/confirm", "/api/lead-alert", "/api/cron", "/o/", "/wykonawca", "/wykonawcy", "/sitemap.xml", "/robots.txt"];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     return supabaseResponse;
   }
