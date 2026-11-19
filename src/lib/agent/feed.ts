@@ -6,6 +6,7 @@ import {
   fetchPendingStudioCards,
   fetchPendingDesignerCards,
   fetchStuckLandingLeadCards,
+  fetchFlaggedLeadCards,
   fetchRespondedFreelancerCards,
 } from "@/lib/agent/sources/supabase";
 import { fetchGmailCards } from "@/lib/agent/sources/gmail";
@@ -49,6 +50,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
     pendingStudioCards,
     pendingDesignerCards,
     stuckLeadCards,
+    flaggedLeadCards,
     respondedFreelancerCards,
     gmailCards,
     postproxyCards,
@@ -59,6 +61,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
     fetchPendingStudioCards(admin),
     fetchPendingDesignerCards(admin),
     fetchStuckLandingLeadCards(admin),
+    fetchFlaggedLeadCards(admin),
     fetchRespondedFreelancerCards(admin),
     fetchGmailCards(admin),
     fetchPostproxyCards(admin),
@@ -75,6 +78,7 @@ export async function buildAgentFeed(opts: { includeHidden?: boolean } = {}): Pr
     ...pendingStudioCards,
     ...pendingDesignerCards,
     ...stuckLeadCards,
+    ...flaggedLeadCards,
     ...respondedFreelancerCards,
     ...gmailCards,
     ...postproxyCards,

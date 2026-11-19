@@ -43,6 +43,13 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 - SMS (`src/lib/sms.ts`, SMSAPI.pl): opcjonalny, brak `SMSAPI_TOKEN` = pomijany. Env: `SMSAPI_TOKEN`, `SMS_SENDER`, `ADMIN_PHONE`.
 - Automatyczna podmiana studia po wygaśnięciu: przełącznik w `/admin/ustawienia`, domyślnie WYŁ.; zawsze przez `przypiszStudia` bez `force`.
 
+## Automatyzacja przypisań (Etap 7, `autonomia-przypisywania-brief.md`)
+
+- Kolejność wg decyzji Wojtka (19.11): filtr (Faza 3) → automatyczna zamiana lead → zlecenie + auto-przypisanie (Faza 1) → ranking → geo-fallback → agent tylko z wyjątkami.
+- Filtr duplikatów i spamu: `src/lib/automation/filtr-zgloszen.ts`, reguły bez zależności w `filtr-reguly.ts` (kontrola: `node scripts/check-filtr.mjs`). Wołany w `/api/lead-alert` dla `kind='zlecenie'`, zawsze (bez przełącznika). Tylko oznacza (`landing_leads.auto_flag`, migracja 031) — lead zostaje `new`, karta w agencie; oznaczonego zgłoszenia automat nigdy nie przetwarza.
+- Formularz klienta nie ma pola imienia — nie dodawać reguły „puste imię”.
+- Każda automatyczna akcja = wpis w `admin_actions` z `entity='automation'`, `admin_id` NULL.
+
 ## Powiadomienia — KRYTYCZNE
 
 Wszystkie powiadomienia platformy (nowe zlecenia, rejestracje studiów, zgłoszenia grafików, leady z landingu) muszą trafiać na **`zlecoklejaniepl@gmail.com`**, NIE na `hiline.zerkowski@gmail.com`.

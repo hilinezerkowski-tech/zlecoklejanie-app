@@ -9,6 +9,7 @@ import {
   sendEmail,
 } from "@/lib/email";
 import { autoOnboardLead, type AutoOnboardResult } from "@/lib/onboarding";
+import { ETYKIETA_FLAGI, filtrujZgloszenie, type OcenaZgloszenia } from "@/lib/automation/filtr-zgloszen";
 import { sendSms } from "@/lib/sms";
 
 /**
@@ -196,6 +197,11 @@ export async function POST(req: NextRequest) {
       .eq("id", lead.id);
   }
 
+  // ---- 0b. Filtr duplikatów i spamu (zgłoszenia klientów) ---------------
+  // Tylko oznacza — lead zostaje 'new', dostaje kartę w agencie. Nie blokuje alertu.
+  const ocena: OcenaZgloszenia =
+    lead.kind === "zlecenie" ? await filtrujZgloszenie(admin, lead) : { flaga: null };
+
   // ---- 1. Alert do admina ----------------------------------------------
   const rows = Object.entries(p)
     .filter(([, v]) => v && String(v).trim())
@@ -210,14 +216,21 @@ export async function POST(req: NextRequest) {
     .join("");
 
   const kindLabel = kindLabels[lead.kind] || lead.kind;
-  const adminSubject =
-    `Nowy lead (${lead.kind}): ${p.nazwa || p.auto || p.miasto || p.email || ""}`.trim();
+  const adminSubject = `${ocena.flaga ? `[${ETYKIETA_FLAGI[ocena.flaga]}] ` : ""}Nowy lead (${lead.kind}): ${
+    p.nazwa || p.auto || p.miasto || p.email || ""
+  }`.trim();
 
-  const autoNote = auto.done
+  const flagaNote = ocena.flaga
+    ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#fff4e0;border-radius:8px;"><strong>${escapeHtml(
+        ETYKIETA_FLAGI[ocena.flaga]
+      )}:</strong> ${escapeHtml(ocena.powody.join("; "))}. Automat tego zgloszenia nie przetworzy — karta czeka w agencie.</p>`
+    : "";
+
+  const autoNote = flagaNote + (auto.done
     ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#f3f9e3;border-radius:8px;">Konto zalozone automatycznie (status: oczekuje), mail powitalny ${auto.welcomeSent ? "wyslany" : "NIE wyslany — skontaktuj sie recznie"}. Wykonawca nie dostanie zlecen, dopoki nie klikniesz Aktywuj.</p>`
     : auto.reason
     ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#fff4e0;border-radius:8px;">Auto-onboarding pominiety: ${escapeHtml(auto.reason)}. Uzyj przycisku w skrzynce leadow.</p>`
-    : "";
+    : "");
 
   const adminHtml = emailLayout({
     title: "Nowe zgloszenie z formularza",
@@ -279,5 +292,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, adminSent, replySent, autoOnboarded: auto.done });
+  return NextResponse.json({ ok: true, adminSent, replySent, autoOnboarded: auto.done, flaga: ocena.flaga });
 }
