@@ -11,7 +11,7 @@ import { przypiszStudia, MAX_STUDIOS_PER_ORDER } from "@/lib/assign-studio";
 import { labelUslugi, normalizujUslugeZlecenia, studioPasuje } from "@/lib/uslugi";
 import { geokoduj, punktZKodu, sortujWgOdleglosci } from "@/lib/geo";
 import { wybierzStudia, type Kandydat } from "@/lib/automation/auto-reguly";
-import { PROMIEN_KM } from "@/lib/automation/ustawienia";
+import { pobierzPromienie } from "@/lib/automation/ustawienia";
 import { utworzZlecenieZLeada } from "@/lib/automation/zlecenie-z-leada";
 
 export type WynikAutomatu =
@@ -142,10 +142,11 @@ export async function autoPrzypiszZlecenie(
     const miastoRozpoznane = Boolean(punktZKodu(order.city) ?? (nazwaMiasta ? geokoduj(nazwaMiasta) : null));
 
     const decyzja = wybierzStudia(kandydaci, {
-      promienKm: PROMIEN_KM,
+      promienie: await pobierzPromienie(admin),
       max: MAX_STUDIOS_PER_ORDER,
       wykonawcaSlug: opts.wykonawcaSlug,
       miastoRozpoznane,
+      usluga: labelUslugi(order.service_type),
     });
     if (!decyzja.przypisz) return wyjatek(decyzja.powod);
 

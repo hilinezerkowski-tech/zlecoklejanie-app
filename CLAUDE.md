@@ -51,9 +51,10 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 - Każda automatyczna akcja = wpis w `admin_actions` z `entity='automation'`, `admin_id` NULL.
 - Automat (Faza 1): `src/lib/automation/auto-przypisanie.ts` (`automatZgloszenia` = lead → zlecenie → przypisanie), reguły wyboru bez zależności w `auto-reguly.ts` (kontrola: `node scripts/check-automat.mjs`). Przełącznik `app_settings.auto_przypisanie` w `/admin/ustawienia`, domyślnie WYŁ. Wołany w `/api/lead-alert` tylko przy WŁ. i bez flagi filtra.
 - Zamiana lead → zlecenie wyłącznie przez `utworzZlecenieZLeada` (`src/lib/automation/zlecenie-z-leada.ts`) — używa jej też przycisk w `/admin/leady`.
-- Wybór studiów: tylko `studioPasuje = pasuje`, bez pauzy, do 3 najbliższych w promieniu `PROMIEN_KM` (km z `geo.ts`). Wyjątki = karta w agencie (powód w faktach karty z `admin_actions`): grafika/inne, nierozpoznane miasto, brak kandydatów, jedynym kandydatem Hiline. Klient wskazał wykonawcę (`payload.wykonawca`) → tylko on, jeśli pasuje.
+- Wybór studiów: tylko `studioPasuje = pasuje`, bez pauzy, do 3 najlepszych w kolejnych promieniach (km z `geo.ts`). Wyjątki = karta w agencie (powód w faktach karty z `admin_actions`): grafika/inne, nierozpoznane miasto, brak kandydatów, jedynym kandydatem Hiline. Klient wskazał wykonawcę (`payload.wykonawca`) → tylko on, jeśli pasuje.
 - SMS do admina o nowym zleceniu idzie tylko, gdy automat NIE przypisał (Wojtek reaguje tylko na wyjątki).
 - Ranking (Faza 2, `uszereguj` w `auto-reguly.ts`): odległość, ale studia w odstępie < 10 km to remis → mniej przypisań z 7 dni (bez declined/expired/rejected) wyżej, przy równym obciążeniu kolejność losowa. Kryterium „tempo odpowiedzi” pominięte — odznaki z Etapu 5.4 jeszcze nie ma.
+- Geo-fallback (Faza 4): promienie z `app_settings.automat_promienie` (domyślnie 50/100/200 km, edycja w `/admin/ustawienia`, walidacja `oczyscPromienie`). Bierzemy najmniejszy promień z kandydatem; gdy w promieniu jest tylko Hiline — szukamy dalej. Użyty promień zapisuje się w `admin_actions.payload.promienKm`. Nie mylić z `PROMIEN_KM` w `catalog-geo.ts` (katalog publiczny).
 
 ## Powiadomienia — KRYTYCZNE
 

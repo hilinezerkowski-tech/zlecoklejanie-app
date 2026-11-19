@@ -3,7 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scalUstawieniaSla } from "@/lib/sla";
 import { SlaForm } from "./sla-form";
 import { AutomatForm } from "./automat-form";
-import { KLUCZ_AUTO_PRZYPISANIE, PROMIEN_KM } from "@/lib/automation/ustawienia";
+import {
+  DOMYSLNE_PROMIENIE,
+  KLUCZ_AUTO_PRZYPISANIE,
+  KLUCZ_PROMIENIE,
+  oczyscPromienie,
+} from "@/lib/automation/ustawienia";
 
 export default async function UstawieniaPage() {
   const supabase = await createClient();
@@ -19,17 +24,20 @@ export default async function UstawieniaPage() {
   const { data: ustawienia } = await createAdminClient()
     .from("app_settings")
     .select("key, value")
-    .in("key", ["sla", "auto_podmiana", KLUCZ_AUTO_PRZYPISANIE]);
+    .in("key", ["sla", "auto_podmiana", KLUCZ_AUTO_PRZYPISANIE, KLUCZ_PROMIENIE]);
   const sla = scalUstawieniaSla(ustawienia?.find((r) => r.key === "sla")?.value);
   const wlaczona = (key: string) =>
     Boolean((ustawienia?.find((r) => r.key === key)?.value as { wlaczona?: boolean } | undefined)?.wlaczona);
   const autoPodmiana = wlaczona("auto_podmiana");
+  const promienie =
+    oczyscPromienie((ustawienia?.find((r) => r.key === KLUCZ_PROMIENIE)?.value as { promienie?: unknown } | undefined)?.promienie) ??
+    [...DOMYSLNE_PROMIENIE];
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-8">Ustawienia</h1>
 
-      <AutomatForm autoPrzypisanie={wlaczona(KLUCZ_AUTO_PRZYPISANIE)} promienKm={PROMIEN_KM} />
+      <AutomatForm autoPrzypisanie={wlaczona(KLUCZ_AUTO_PRZYPISANIE)} promienie={promienie} />
 
       <SlaForm sla={sla} autoPodmiana={autoPodmiana} />
 

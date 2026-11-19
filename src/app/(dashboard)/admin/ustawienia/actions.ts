@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOMYSLNE_SLA, scalUstawieniaSla, type UstawieniaSla } from "@/lib/sla";
-import { KLUCZ_AUTO_PRZYPISANIE } from "@/lib/automation/ustawienia";
+import { KLUCZ_AUTO_PRZYPISANIE, KLUCZ_PROMIENIE, oczyscPromienie } from "@/lib/automation/ustawienia";
 
 export type WynikUstawien = { ok: true; message: string } | { ok: false; error: string };
 
@@ -51,6 +51,17 @@ export async function ustawAutoPrzypisanie(wlaczona: boolean): Promise<WynikUsta
   const auth = await requireAdmin();
   if (!auth.ok) return auth;
   return zapisz(KLUCZ_AUTO_PRZYPISANIE, { wlaczona: Boolean(wlaczona) }, auth.userId);
+}
+
+/** Promienie szukania studiów przez automat (Faza 4), np. [50, 100, 200]. */
+export async function zapiszPromienie(promienie: number[]): Promise<WynikUstawien> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+  const czyste = oczyscPromienie(promienie);
+  if (!czyste) {
+    return { ok: false, error: "Promienie: 1–3 liczby całkowite od 1 do 500 km, każda większa od poprzedniej." };
+  }
+  return zapisz(KLUCZ_PROMIENIE, { promienie: czyste }, auth.userId);
 }
 
 export async function zapiszUstawieniaSla(input: UstawieniaSla): Promise<WynikUstawien> {

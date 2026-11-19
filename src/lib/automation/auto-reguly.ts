@@ -65,10 +65,13 @@ export function uszereguj(kandydaci: Kandydat[], losuj: () => number = Math.rand
 export function wybierzStudia(
   kandydaci: Kandydat[],
   opts: {
-    promienKm: number;
+    /** Kolejne promienie (Faza 4), np. [50, 100, 200] — rosnąco. */
+    promienie: number[];
     max: number;
     wykonawcaSlug?: string | null;
     miastoRozpoznane: boolean;
+    /** Etykieta usługi do treści wyjątku. */
+    usluga?: string;
     losuj?: () => number;
   }
 ): Decyzja {
@@ -89,14 +92,27 @@ export function wybierzStudia(
 
   if (!opts.miastoRozpoznane) return { przypisz: false, powod: "nie rozpoznano miejscowości zlecenia" };
 
-  const wPromieniu = pasujace.filter((k) => k.km != null && k.km <= opts.promienKm);
-  const studia = uszereguj(wPromieniu, opts.losuj).slice(0, opts.max);
+  // Geo-fallback (Faza 4): najmniejszy promień, w którym jest ktoś poza samym Hiline.
+  const promienie = [...opts.promienie].filter((r) => r > 0).sort((a, b) => a - b);
+  let tylkoHiline = false;
+  for (const promien of promienie) {
+    const wPromieniu = pasujace.filter((k) => k.km != null && k.km <= promien);
+    const studia = uszereguj(wPromieniu, opts.losuj).slice(0, opts.max);
+    if (studia.length === 0) continue;
+    if (studia.length === 1 && toHiline(studia[0])) {
+      // Hiline nigdy jedyną propozycją — szukamy dalej, czy jest ktoś jeszcze.
+      tylkoHiline = true;
+      continue;
+    }
+    return { przypisz: true, studia, promienKm: promien, powod: `${studia.length} najlepsze pasujące w ${promien} km (km, obciążenie)` };
+  }
 
-  if (studia.length === 0) {
-    return { przypisz: false, powod: `brak pasujących studiów w promieniu ${opts.promienKm} km` };
+  const max = promienie[promienie.length - 1] ?? 0;
+  if (tylkoHiline) {
+    return { przypisz: false, powod: `jedynym pasującym studiem w promieniu ${max} km jest Hiline — nigdy jedyna propozycja` };
   }
-  if (studia.length === 1 && toHiline(studia[0])) {
-    return { przypisz: false, powod: "jedynym pasującym studiem jest Hiline — nigdy jedyna propozycja" };
-  }
-  return { przypisz: true, studia, promienKm: opts.promienKm, powod: `${studia.length} najlepsze pasujące (km, obciążenie)` };
+  return {
+    przypisz: false,
+    powod: `brak studiów${opts.usluga ? ` z usługą „${opts.usluga}”` : ""} nawet w promieniu ${max} km`,
+  };
 }
