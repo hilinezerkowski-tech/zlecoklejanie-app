@@ -5,6 +5,7 @@ import Link from "next/link";
 import LeadActions from "./lead-actions";
 import { mapLandingCheckboxy, maUslugeCore } from "@/lib/uslugi";
 import { BRAK_USLUG_REASON } from "@/lib/onboarding";
+import { ETYKIETA_FLAGI, type FlagaZgloszenia } from "@/lib/automation/filtr-zgloszen";
 
 // Leady zawierają dane kontaktowe — strona musi być zawsze świeża i nie może
 // trafić do cache CDN.
@@ -17,6 +18,8 @@ type Lead = {
   status: string;
   created_at: string;
   order_id: string | null;
+  auto_flag?: FlagaZgloszenia | null;
+  auto_flag_details?: { powody?: string[] } | null;
 };
 
 const kindLabels: Record<string, { label: string; color: string }> = {
@@ -70,17 +73,23 @@ export default async function LeadyPage({
 
   // landing_leads nie ma polityki SELECT (celowo) — czytamy service rolem.
   const admin = createAdminClient();
-  let query = admin
-    .from("landing_leads")
-    .select("id, kind, payload, status, created_at, order_id")
-    .order("created_at", { ascending: false })
-    .limit(200);
+  const pobierz = (kolumny: string) => {
+    let query = admin
+      .from("landing_leads")
+      .select(kolumny)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (params.kind) query = query.eq("kind", params.kind);
+    if (params.status) query = query.eq("status", params.status);
+    return query;
+  };
 
-  if (params.kind) query = query.eq("kind", params.kind);
-  if (params.status) query = query.eq("status", params.status);
-
-  const { data, error } = await query;
-  const leads = (data ?? []) as Lead[];
+  // Flaga filtra (migracja 031) — przed migracją kolumny nie ma, wtedy lista bez niej.
+  let { data, error } = await pobierz("id, kind, payload, status, created_at, order_id, auto_flag, auto_flag_details");
+  if (error && /auto_flag/.test(error.message)) {
+    ({ data, error } = await pobierz("id, kind, payload, status, created_at, order_id"));
+  }
+  const leads = (data ?? []) as unknown as Lead[];
   const newCount = leads.filter((l) => l.status === "new").length;
 
   const filters: { label: string; href: string; active: boolean }[] = [
@@ -157,7 +166,8 @@ export default async function LeadyPage({
             return (
               <div
                 key={lead.id}
-                className={`bg-brand-grafit-light border rounded-2xl p-5 transition ${
+                id={`lead-${lead.id}`}
+                className={`scroll-mt-24 bg-brand-grafit-light border rounded-2xl p-5 transition ${
                   lead.status === "new" ? "border-brand-lime/30" : "border-brand-border"
                 }`}
               >
@@ -183,6 +193,15 @@ export default async function LeadyPage({
                           ⚠ {BRAK_USLUG_REASON}
                         </span>
                       )}
+                    {/* Filtr duplikatów i spamu (src/lib/automation/filtr-zgloszen.ts). */}
+                    {lead.auto_flag && (
+                      <span
+                        className="text-xs px-2 py-1 rounded-full font-medium bg-amber-400/15 text-amber-400"
+                        title={(lead.auto_flag_details?.powody ?? []).join("; ")}
+                      >
+                        ⚠ {ETYKIETA_FLAGI[lead.auto_flag]}
+                      </span>
+                    )}
                   </div>
 
                   <LeadActions

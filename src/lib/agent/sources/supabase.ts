@@ -9,6 +9,7 @@ import { cityFromAddress, citySlug } from "@/lib/studio-location";
 import { labelUslugi, maUslugeCore, oczyscUslugi, studioPasuje } from "@/lib/uslugi";
 import { znajdzKandydatow } from "@/lib/podmiana";
 import { labelOdmowy } from "@/lib/odmowa";
+import { ETYKIETA_FLAGI, type FlagaZgloszenia, type Powiazane } from "@/lib/automation/filtr-zgloszen";
 
 const scopeLabels: Record<string, string> = {
   full: "całe auto",
@@ -370,6 +371,92 @@ export async function fetchStuckLandingLeadCards(admin: SupabaseClient): Promise
         { kind: "open", label: "Otwórz w skrzynce leadów", href: "/admin/leady?status=new" },
         { kind: "dismiss", label: "Później" },
       ],
+    };
+    return card;
+  });
+}
+
+// --- Zgłoszenia klientów zatrzymane przez filtr (Etap 7, Faza 3) ----------------
+
+type FlaggedLeadRow = {
+  id: string;
+  payload: Record<string, string> | null;
+  created_at: string;
+  auto_flag: FlagaZgloszenia;
+  auto_flag_details: { powody?: string[]; powiazane?: Powiazane[] } | null;
+};
+
+function kiedy(iso: string): string {
+  return new Date(iso).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw", dateStyle: "short", timeStyle: "short" });
+}
+
+/**
+ * Nowe zgłoszenia klientów, które filtr oznaczył jako możliwy duplikat albo spam
+ * (src/lib/automation/filtr-zgloszen.ts). Karta znika sama, gdy lead przestanie być
+ * 'new' — po zamianie na zlecenie albo oznaczeniu jako spam/obsłużony w /admin/leady.
+ */
+export async function fetchFlaggedLeadCards(admin: SupabaseClient): Promise<AgentCard[]> {
+  const { data, error } = await admin
+    .from("landing_leads")
+    .select("id, payload, created_at, auto_flag, auto_flag_details")
+    .eq("kind", "zlecenie")
+    .eq("status", "new")
+    .not("auto_flag", "is", null)
+    .order("created_at", { ascending: true });
+  // Przed migracją 031 kolumny auto_flag nie ma — źródło po prostu milczy.
+  if (error) return [];
+
+  return ((data ?? []) as unknown as FlaggedLeadRow[]).map((lead) => {
+    const p = lead.payload || {};
+    const powody = lead.auto_flag_details?.powody ?? [];
+    const powiazane = lead.auto_flag_details?.powiazane ?? [];
+    const opis = [p.auto, p.miasto].filter(Boolean).join(", ") || p.email || "bez danych";
+    const duplikat = lead.auto_flag === "duplikat";
+
+    const facts = [
+      `Auto: ${p.auto || "nie podano"}`,
+      `Usługa: ${p.usluga || "nie podano"}`,
+      `Miasto: ${[p.kod_pocztowy, p.miasto].filter(Boolean).join(" ") || "nie podano"}`,
+      `Kontakt: ${[p.email, p.telefon].filter(Boolean).join(", ") || "brak"}`,
+      `Powód: ${powody.join("; ") || "brak szczegółów"}`,
+      ...powiazane.map((w) =>
+        w.typ === "zlecenie" || w.orderId
+          ? `Wcześniej: zlecenie z ${kiedy(w.createdAt)} (${(w.orderId || w.id).slice(0, 8)})`
+          : `Wcześniej: zgłoszenie z ${kiedy(w.createdAt)}, jeszcze nie zamienione na zlecenie`
+      ),
+    ];
+
+    const actions: AgentCard["actions"] = [
+      { kind: "open", label: "Otwórz zgłoszenie", href: `/admin/leady?kind=zlecenie#lead-${lead.id}` },
+    ];
+    const wczesniejsze = powiazane.find((w) => w.typ === "zlecenie" || w.orderId);
+    if (wczesniejsze) {
+      actions.push({
+        kind: "open",
+        label: "Otwórz wcześniejsze zlecenie",
+        href: `/admin/zlecenia/${wczesniejsze.orderId || wczesniejsze.id}`,
+      });
+    } else if (powiazane[0]) {
+      actions.push({
+        kind: "open",
+        label: "Otwórz wcześniejsze zgłoszenie",
+        href: `/admin/leady?kind=zlecenie#lead-${powiazane[0].id}`,
+      });
+    }
+    actions.push({ kind: "dismiss", label: "Później" });
+
+    const card: AgentCard = {
+      id: `lead-flag:${lead.id}`,
+      type: "new_order",
+      priority: duplikat ? "normal" : "low",
+      source: "Supabase",
+      occurredAt: lead.created_at,
+      title: `${ETYKIETA_FLAGI[lead.auto_flag]} — ${opis}`,
+      facts,
+      suggestion: duplikat
+        ? "Ten sam klient zgłosił się ponownie w ciągu 24 h. Jeśli to to samo auto — oznacz zgłoszenie jako obsłużone; jeśli inne — zamień je na zlecenie ręcznie."
+        : "Zgłoszenie wygląda na spam. Sprawdź je i oznacz jako spam albo zamień na zlecenie, jeśli jest prawdziwe.",
+      actions,
     };
     return card;
   });
