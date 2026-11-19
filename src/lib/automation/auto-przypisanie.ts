@@ -38,6 +38,26 @@ async function zapiszLog(
   if (error) console.warn("[automat] admin_actions insert failed:", error.message);
 }
 
+const OKNO_OBCIAZENIA_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Obciążenie studiów (Faza 2): przypisania z ostatnich 7 dni, które studio nadal ma „na głowie”
+ * albo zrealizowało — bez odmów, wygaśnięć i odrzuceń przez klienta. Studio → liczba.
+ */
+async function obciazenieStudiow(admin: SupabaseClient): Promise<Map<string, number>> {
+  const od = new Date(Date.now() - OKNO_OBCIAZENIA_MS).toISOString();
+  const { data } = await admin
+    .from("order_assignments")
+    .select("studio_id")
+    .gte("assigned_at", od)
+    .not("status", "in", "(declined,expired,rejected)");
+  const wynik = new Map<string, number>();
+  for (const r of (data ?? []) as { studio_id: string }[]) {
+    wynik.set(r.studio_id, (wynik.get(r.studio_id) ?? 0) + 1);
+  }
+  return wynik;
+}
+
 export type WynikZgloszenia =
   | { etap: "brak_zlecenia"; powod: string }
   | { etap: "zlecenie"; orderId: string; wynik: WynikAutomatu };
@@ -109,12 +129,14 @@ export async function autoPrzypiszZlecenie(
       ((studios ?? []) as StudioRow[]).map((s) => ({ ...s, business_name: s.business_name ?? undefined })),
       order.city
     );
+    const obciazenie = await obciazenieStudiow(admin);
     const kandydaci: Kandydat[] = zKm.map((s) => ({
       id: s.id,
       nazwa: s.business_name || "studio",
       slug: s.slug,
       km: s.odleglosc_km,
       pasuje: studioPasuje(s.services, order.service_type) === "pasuje",
+      obciazenie: obciazenie.get(s.id) ?? 0,
     }));
     const nazwaMiasta = (order.city || "").replace(/\d{2}-?\d{3}/, "").trim();
     const miastoRozpoznane = Boolean(punktZKodu(order.city) ?? (nazwaMiasta ? geokoduj(nazwaMiasta) : null));
@@ -138,7 +160,8 @@ export async function autoPrzypiszZlecenie(
     const studia = decyzja.studia.map((s) => ({ id: s.id, nazwa: s.nazwa, km: s.km }));
     await zapiszLog(admin, orderId, {
       ...kontekst,
-      studia,
+      // Obciążenie w logu — żeby było widać, dlaczego ranking wybrał te studia (Faza 2).
+      studia: decyzja.studia.map((s) => ({ id: s.id, nazwa: s.nazwa, km: s.km, obciazenie7d: s.obciazenie ?? 0 })),
       promienKm: decyzja.promienKm,
       regula: decyzja.powod,
       maileWyslane: res.maileWyslane,

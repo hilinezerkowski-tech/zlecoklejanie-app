@@ -53,6 +53,7 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 - Zamiana lead → zlecenie wyłącznie przez `utworzZlecenieZLeada` (`src/lib/automation/zlecenie-z-leada.ts`) — używa jej też przycisk w `/admin/leady`.
 - Wybór studiów: tylko `studioPasuje = pasuje`, bez pauzy, do 3 najbliższych w promieniu `PROMIEN_KM` (km z `geo.ts`). Wyjątki = karta w agencie (powód w faktach karty z `admin_actions`): grafika/inne, nierozpoznane miasto, brak kandydatów, jedynym kandydatem Hiline. Klient wskazał wykonawcę (`payload.wykonawca`) → tylko on, jeśli pasuje.
 - SMS do admina o nowym zleceniu idzie tylko, gdy automat NIE przypisał (Wojtek reaguje tylko na wyjątki).
+- Ranking (Faza 2, `uszereguj` w `auto-reguly.ts`): odległość, ale studia w odstępie < 10 km to remis → mniej przypisań z 7 dni (bez declined/expired/rejected) wyżej, przy równym obciążeniu kolejność losowa. Kryterium „tempo odpowiedzi” pominięte — odznaki z Etapu 5.4 jeszcze nie ma.
 
 ## Powiadomienia — KRYTYCZNE
 
