@@ -55,6 +55,7 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 - SMS do admina o nowym zleceniu idzie tylko, gdy automat NIE przypisał (Wojtek reaguje tylko na wyjątki).
 - Ranking (Faza 2, `uszereguj` w `auto-reguly.ts`): odległość, ale studia w odstępie < 10 km to remis → mniej przypisań z 7 dni (bez declined/expired/rejected) wyżej, przy równym obciążeniu kolejność losowa. Kryterium „tempo odpowiedzi” pominięte — odznaki z Etapu 5.4 jeszcze nie ma.
 - Geo-fallback (Faza 4): promienie z `app_settings.automat_promienie` (domyślnie 50/100/200 km, edycja w `/admin/ustawienia`, walidacja `oczyscPromienie`). Bierzemy najmniejszy promień z kandydatem; gdy w promieniu jest tylko Hiline — szukamy dalej. Użyty promień zapisuje się w `admin_actions.payload.promienKm`. Nie mylić z `PROMIEN_KM` w `catalog-geo.ts` (katalog publiczny).
+- Agent tylko z wyjątkami (Faza 5): z konstrukcji — przypisane zlecenie ma status `assigned`, więc karta „nowe zlecenie” zostaje tylko dla wyjątków i przy WYŁ. przełączniku. „Log automatyzacji” pod kartami w `/admin/agent` (`log-automatyzacji.tsx`, 7 dni z `admin_actions`). Mail poniedziałkowy z Etapu 6 jeszcze nie istnieje — po jego zbudowaniu dopisać linię „N automatycznie, M wyjątków”.
 
 ## Powiadomienia — KRYTYCZNE
 

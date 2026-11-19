@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { buildAgentFeed } from "@/lib/agent/feed";
 import AgentDashboard from "./agent-dashboard";
+import LogAutomatyzacji from "./log-automatyzacji";
 
 export const metadata = { title: "Agent — ZlecOklejanie.pl" };
 export const dynamic = "force-dynamic";
@@ -20,5 +21,11 @@ async function requireAdmin() {
 export default async function AgentPage() {
   await requireAdmin();
   const initialFeed = await buildAgentFeed();
-  return <AgentDashboard initialFeed={initialFeed} />;
+  return (
+    <>
+      <AgentDashboard initialFeed={initialFeed} />
+      {/* Etap 7, Faza 5: co automat załatwił bez klikania. */}
+      <LogAutomatyzacji />
+    </>
+  );
 }
