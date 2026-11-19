@@ -49,6 +49,10 @@ Kontekst biznesowy i zasady: `../CLAUDE.md` (folder nadrzędny). Ten plik = jak 
 - Filtr duplikatów i spamu: `src/lib/automation/filtr-zgloszen.ts`, reguły bez zależności w `filtr-reguly.ts` (kontrola: `node scripts/check-filtr.mjs`). Wołany w `/api/lead-alert` dla `kind='zlecenie'`, zawsze (bez przełącznika). Tylko oznacza (`landing_leads.auto_flag`, migracja 031) — lead zostaje `new`, karta w agencie; oznaczonego zgłoszenia automat nigdy nie przetwarza.
 - Formularz klienta nie ma pola imienia — nie dodawać reguły „puste imię”.
 - Każda automatyczna akcja = wpis w `admin_actions` z `entity='automation'`, `admin_id` NULL.
+- Automat (Faza 1): `src/lib/automation/auto-przypisanie.ts` (`automatZgloszenia` = lead → zlecenie → przypisanie), reguły wyboru bez zależności w `auto-reguly.ts` (kontrola: `node scripts/check-automat.mjs`). Przełącznik `app_settings.auto_przypisanie` w `/admin/ustawienia`, domyślnie WYŁ. Wołany w `/api/lead-alert` tylko przy WŁ. i bez flagi filtra.
+- Zamiana lead → zlecenie wyłącznie przez `utworzZlecenieZLeada` (`src/lib/automation/zlecenie-z-leada.ts`) — używa jej też przycisk w `/admin/leady`.
+- Wybór studiów: tylko `studioPasuje = pasuje`, bez pauzy, do 3 najbliższych w promieniu `PROMIEN_KM` (km z `geo.ts`). Wyjątki = karta w agencie (powód w faktach karty z `admin_actions`): grafika/inne, nierozpoznane miasto, brak kandydatów, jedynym kandydatem Hiline. Klient wskazał wykonawcę (`payload.wykonawca`) → tylko on, jeśli pasuje.
+- SMS do admina o nowym zleceniu idzie tylko, gdy automat NIE przypisał (Wojtek reaguje tylko na wyjątki).
 
 ## Powiadomienia — KRYTYCZNE
 

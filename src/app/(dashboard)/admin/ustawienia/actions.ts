@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOMYSLNE_SLA, scalUstawieniaSla, type UstawieniaSla } from "@/lib/sla";
+import { KLUCZ_AUTO_PRZYPISANIE } from "@/lib/automation/ustawienia";
 
 export type WynikUstawien = { ok: true; message: string } | { ok: false; error: string };
 
@@ -40,6 +41,16 @@ export async function ustawAutoPodmiane(wlaczona: boolean): Promise<WynikUstawie
   const auth = await requireAdmin();
   if (!auth.ok) return auth;
   return zapisz("auto_podmiana", { wlaczona: Boolean(wlaczona) }, auth.userId);
+}
+
+/**
+ * „Automatyczne przypisywanie zleceń” (Etap 7) — domyślnie WYŁ. Gdy WŁ., nowe zgłoszenie
+ * klienta bez flagi filtra samo zamienia się w zlecenie i dostaje do 3 pasujących studiów.
+ */
+export async function ustawAutoPrzypisanie(wlaczona: boolean): Promise<WynikUstawien> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+  return zapisz(KLUCZ_AUTO_PRZYPISANIE, { wlaczona: Boolean(wlaczona) }, auth.userId);
 }
 
 export async function zapiszUstawieniaSla(input: UstawieniaSla): Promise<WynikUstawien> {

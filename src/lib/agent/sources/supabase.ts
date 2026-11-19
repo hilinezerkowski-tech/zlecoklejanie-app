@@ -67,6 +67,23 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
   const unassigned = rows.filter((o) => !assignedIds.has(o.id));
   if (unassigned.length === 0) return [];
 
+  // Powód, dla którego automat (Etap 7) nie przypisał zlecenia — ostatni wpis na zlecenie.
+  const { data: automatLog } = await admin
+    .from("admin_actions")
+    .select("entity_id, error, created_at")
+    .eq("entity", "automation")
+    .eq("action", "auto_assign")
+    .eq("result", "error")
+    .in(
+      "entity_id",
+      unassigned.map((o) => o.id)
+    )
+    .order("created_at", { ascending: false });
+  const powodAutomatu = new Map<string, string>();
+  for (const r of (automatLog ?? []) as { entity_id: string; error: string | null }[]) {
+    if (!powodAutomatu.has(r.entity_id) && r.error) powodAutomatu.set(r.entity_id, r.error);
+  }
+
   // Aktywne studia, raz dla wszystkich kart — dopasowanie po mieście z adresu.
   // Bez studiów z pauzą leadów — tak samo jak lista "Przypisz studio" w panelu zlecenia.
   const { data: studios } = await admin
@@ -118,6 +135,7 @@ export async function fetchNewOrderCards(admin: SupabaseClient): Promise<AgentCa
       ...(bezUslug.length > 0
         ? [`Studia bez zaznaczonych usług w regionie (do sprawdzenia): ${bezUslug.map((s) => s.business_name || "bez nazwy").join(", ")}`]
         : []),
+      ...(powodAutomatu.has(order.id) ? [`Automat nie przypisał: ${powodAutomatu.get(order.id)}`] : []),
     ];
 
     const suggestion = bezFiltra
