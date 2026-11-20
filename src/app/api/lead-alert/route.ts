@@ -10,6 +10,11 @@ import {
 } from "@/lib/email";
 import { autoOnboardLead, type AutoOnboardResult } from "@/lib/onboarding";
 import { ETYKIETA_FLAGI, filtrujZgloszenie, type OcenaZgloszenia } from "@/lib/automation/filtr-zgloszen";
+import { automatZgloszenia, type WynikZgloszenia } from "@/lib/automation/auto-przypisanie";
+import { czyAutoPrzypisanie } from "@/lib/automation/ustawienia";
+
+// Automat (Etap 7) przypisuje studia i wysyła im maile w tym samym wywołaniu — dajemy zapas.
+export const maxDuration = 60;
 import { sendSms } from "@/lib/sms";
 
 /**
@@ -202,6 +207,21 @@ export async function POST(req: NextRequest) {
   const ocena: OcenaZgloszenia =
     lead.kind === "zlecenie" ? await filtrujZgloszenie(admin, lead) : { flaga: null };
 
+  // ---- 0c. Automat: zgłoszenie → zlecenie → przypisanie (Etap 7, Faza 1) --
+  // Tylko gdy przełącznik w /admin/ustawienia jest WŁ. i filtr niczego nie znalazł.
+  // Wyjątek nie blokuje alertu — wynik (albo powód) trafia do maila poniżej.
+  let automat: WynikZgloszenia | null = null;
+  if (lead.kind === "zlecenie" && !ocena.flaga && (await czyAutoPrzypisanie(admin))) {
+    try {
+      automat = await automatZgloszenia(admin, lead.id, p.wykonawca?.trim() || null);
+    } catch (e) {
+      console.error("[lead-alert] automat threw:", e);
+      automat = { etap: "brak_zlecenia", powod: `błąd automatu: ${String(e)}` };
+    }
+  }
+  const automatOrderId = automat?.etap === "zlecenie" ? automat.orderId : null;
+  const automatOk = automat?.etap === "zlecenie" && automat.wynik.przypisano;
+
   // ---- 1. Alert do admina ----------------------------------------------
   const rows = Object.entries(p)
     .filter(([, v]) => v && String(v).trim())
@@ -216,9 +236,30 @@ export async function POST(req: NextRequest) {
     .join("");
 
   const kindLabel = kindLabels[lead.kind] || lead.kind;
-  const adminSubject = `${ocena.flaga ? `[${ETYKIETA_FLAGI[ocena.flaga]}] ` : ""}Nowy lead (${lead.kind}): ${
-    p.nazwa || p.auto || p.miasto || p.email || ""
-  }`.trim();
+  const prefiks = ocena.flaga
+    ? `[${ETYKIETA_FLAGI[ocena.flaga]}] `
+    : automatOk
+      ? "[Przypisano automatycznie] "
+      : automat
+        ? "[Automat: do decyzji] "
+        : "";
+  const adminSubject = `${prefiks}Nowy lead (${lead.kind}): ${p.nazwa || p.auto || p.miasto || p.email || ""}`.trim();
+
+  let automatNote = "";
+  if (automat?.etap === "zlecenie" && automat.wynik.przypisano) {
+    const lista = automat.wynik.studia
+      .map((s) => `${escapeHtml(s.nazwa)}${s.km != null ? ` (${s.km} km)` : ""}`)
+      .join(", ");
+    automatNote = `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#f3f9e3;border-radius:8px;"><strong>Zalatwione automatycznie:</strong> zlecenie utworzone i przypisane do: ${lista}. Nic nie musisz robic.</p>`;
+  } else if (automat?.etap === "zlecenie") {
+    automatNote = `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#fff4e0;border-radius:8px;"><strong>Automat utworzyl zlecenie, ale nie przypisal studiow:</strong> ${escapeHtml(
+      automat.wynik.przypisano ? "" : automat.wynik.powod
+    )}. Karta czeka w agencie.</p>`;
+  } else if (automat) {
+    automatNote = `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#fff4e0;border-radius:8px;"><strong>Automat nie utworzyl zlecenia:</strong> ${escapeHtml(
+      automat.powod
+    )}. Zamien zgloszenie recznie w skrzynce leadow.</p>`;
+  }
 
   const flagaNote = ocena.flaga
     ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#fff4e0;border-radius:8px;"><strong>${escapeHtml(
@@ -226,7 +267,7 @@ export async function POST(req: NextRequest) {
       )}:</strong> ${escapeHtml(ocena.powody.join("; "))}. Automat tego zgloszenia nie przetworzy — karta czeka w agencie.</p>`
     : "";
 
-  const autoNote = flagaNote + (auto.done
+  const autoNote = flagaNote + automatNote + (auto.done
     ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#f3f9e3;border-radius:8px;">Konto zalozone automatycznie (status: oczekuje), mail powitalny ${auto.welcomeSent ? "wyslany" : "NIE wyslany — skontaktuj sie recznie"}. Wykonawca nie dostanie zlecen, dopoki nie klikniesz Aktywuj.</p>`
     : auto.reason
     ? `<p style="font-size:14px;margin:0 0 16px;padding:10px 12px;background:#fff4e0;border-radius:8px;">Auto-onboarding pominiety: ${escapeHtml(auto.reason)}. Uzyj przycisku w skrzynce leadow.</p>`
@@ -238,12 +279,14 @@ export async function POST(req: NextRequest) {
       kindLabel
     )}</p>
       ${autoNote}<table style="font-size:14px;line-height:1.5;border-collapse:collapse;">${rows}</table>`,
-    ctaUrl: auto.done
-      ? `${APP_URL}/admin/${auto.kind === "grafik" ? "graficy" : "studia"}?status=pending`
-      : lead.kind === "wykonawca-freelancer"
-        ? `${APP_URL}/admin/leady-freelancer`
-        : `${APP_URL}/admin/leady?status=new`,
-    ctaLabel: auto.done ? "Sprawdz portfolio i aktywuj" : "Otworz skrzynke leadow",
+    ctaUrl: automatOrderId
+      ? `${APP_URL}/admin/zlecenia/${automatOrderId}`
+      : auto.done
+        ? `${APP_URL}/admin/${auto.kind === "grafik" ? "graficy" : "studia"}?status=pending`
+        : lead.kind === "wykonawca-freelancer"
+          ? `${APP_URL}/admin/leady-freelancer`
+          : `${APP_URL}/admin/leady?status=new`,
+    ctaLabel: automatOrderId ? "Otworz zlecenie" : auto.done ? "Sprawdz portfolio i aktywuj" : "Otworz skrzynke leadow",
     footer:
       "Lead klienta zamienisz na zlecenie jednym kliknieciem w panelu. Zglaszajacy dostal juz automatyczne potwierdzenie.",
   });
@@ -261,7 +304,8 @@ export async function POST(req: NextRequest) {
 
   // SMS do admina o nowym zleceniu klienta (opcjonalny: bez SMSAPI_TOKEN/ADMIN_PHONE pomijany).
   // Wykonawcy (studio/grafik/freelancer) mają własny alert mailowy — SMS tylko dla klientów.
-  if (lead.kind === "zlecenie") {
+  // Zlecenie załatwione przez automat nie wymaga reakcji — SMS tylko wtedy, gdy trzeba coś zrobić.
+  if (lead.kind === "zlecenie" && !automatOk) {
     await sendSms(process.env.ADMIN_PHONE, `ZlecOklejanie: nowe zlecenie ${[p.auto, p.miasto].filter(Boolean).join(", ")}. Agent: ${APP_URL}/admin/agent`, {
       event: "lead_admin_sms",
       recipientRole: "admin",
@@ -292,5 +336,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, adminSent, replySent, autoOnboarded: auto.done, flaga: ocena.flaga });
+  return NextResponse.json({
+    ok: true,
+    adminSent,
+    replySent,
+    autoOnboarded: auto.done,
+    flaga: ocena.flaga,
+    automat: automat ? { etap: automat.etap, przypisano: Boolean(automatOk), orderId: automatOrderId } : null,
+  });
 }
