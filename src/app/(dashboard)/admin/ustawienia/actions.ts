@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DOMYSLNE_SLA, scalUstawieniaSla, type UstawieniaSla } from "@/lib/sla";
 import { KLUCZ_AUTO_PRZYPISANIE, KLUCZ_PROMIENIE, oczyscPromienie } from "@/lib/automation/ustawienia";
+import { KLUCZ_PLATNE_WYCENY, KLUCZ_PUNKTY } from "@/lib/punkty";
 
 export type WynikUstawien = { ok: true; message: string } | { ok: false; error: string };
 
@@ -77,4 +78,45 @@ export async function zapiszUstawieniaSla(input: UstawieniaSla): Promise<WynikUs
     };
   }
   return zapisz("sla", s, auth.userId);
+}
+
+/**
+ * „Płatne wyceny” (Gate 1) — domyślnie WYŁ. Gdy WŁ., każda wysłana wycena zużywa 1 punkt
+ * (trigger w bazie, migracja 033), a automat pomija studia bez punktów.
+ * Regulamin: opłaty ogłaszamy wykonawcom min. 30 dni przed włączeniem.
+ */
+export async function ustawPlatneWyceny(wlaczona: boolean): Promise<WynikUstawien> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+  return zapisz(KLUCZ_PLATNE_WYCENY, { wlaczona: Boolean(wlaczona) }, auth.userId);
+}
+
+/** Punkty startowe i pakiet do kupienia. Pusty pakiet = doładowanie niedostępne. */
+export async function zapiszPunkty(input: {
+  start: number;
+  pakietPunkty: number | null;
+  pakietCenaZl: number | null;
+}): Promise<WynikUstawien> {
+  const auth = await requireAdmin();
+  if (!auth.ok) return auth;
+  const start = Number(input.start);
+  if (!Number.isInteger(start) || start < 0 || start > 1000) {
+    return { ok: false, error: "Punkty startowe: liczba całkowita 0–1000." };
+  }
+  const pp = input.pakietPunkty == null ? null : Number(input.pakietPunkty);
+  const cena = input.pakietCenaZl == null ? null : Number(input.pakietCenaZl);
+  if ((pp == null) !== (cena == null)) {
+    return { ok: false, error: "Pakiet: podaj i liczbę punktów, i cenę — albo zostaw oba pola puste." };
+  }
+  if (pp != null && (!Number.isInteger(pp) || pp < 1 || pp > 1000)) {
+    return { ok: false, error: "Pakiet: liczba punktów całkowita 1–1000." };
+  }
+  if (cena != null && (!Number.isFinite(cena) || cena < 1 || cena > 100000)) {
+    return { ok: false, error: "Pakiet: cena od 1 do 100 000 zł." };
+  }
+  return zapisz(
+    KLUCZ_PUNKTY,
+    { start, pakiet_punkty: pp, pakiet_cena_zl: cena == null ? null : Math.round(cena * 100) / 100 },
+    auth.userId
+  );
 }

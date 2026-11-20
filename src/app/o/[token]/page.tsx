@@ -6,6 +6,7 @@ import { signedPhotoUrls } from "@/lib/order-photos";
 import { labelUslugi } from "@/lib/uslugi";
 import { labelOdmowy } from "@/lib/odmowa";
 import { OdpowiedzForm } from "./odpowiedz-form";
+import { czyPlatneWyceny, mozeWycenic, pobierzSaldo } from "@/lib/punkty";
 
 // Strona z tokenem w adresie: nie indeksować, nie wysyłać adresu w nagłówku Referer.
 export const metadata: Metadata = {
@@ -89,7 +90,11 @@ export default async function OdpowiedzPage({ params }: { params: { token: strin
     return <Komunikat tytul={tytul} tekst={tekst} />;
   }
 
-  const fotki = await signedPhotoUrls(Array.isArray(order.photos) ? order.photos : []);
+  const [fotki, platne, saldo] = await Promise.all([
+    signedPhotoUrls(Array.isArray(order.photos) ? order.photos : []),
+    czyPlatneWyceny(admin),
+    pobierzSaldo(admin, a.studio_id),
+  ]);
   const auto = [order.car_brand, order.car_model].filter(Boolean).join(" ");
 
   return (
@@ -140,7 +145,7 @@ export default async function OdpowiedzPage({ params }: { params: { token: strin
         </div>
       )}
 
-      <OdpowiedzForm token={params.token} />
+      <OdpowiedzForm token={params.token} bezPunktow={!mozeWycenic(platne, saldo)} />
     </Ramka>
   );
 }

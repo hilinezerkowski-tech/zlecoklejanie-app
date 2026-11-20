@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scalUstawieniaSla } from "@/lib/sla";
 import { SlaForm } from "./sla-form";
 import { AutomatForm } from "./automat-form";
+import { PunktyForm } from "./punkty-form";
+import { KLUCZ_PLATNE_WYCENY, KLUCZ_PUNKTY, oczyscUstawieniaPunktow } from "@/lib/punkty";
 import {
   DOMYSLNE_PROMIENIE,
   KLUCZ_AUTO_PRZYPISANIE,
@@ -21,10 +23,15 @@ export default async function UstawieniaPage() {
     .single();
 
   // Ustawienia SLA i automatycznej podmiany (tabela app_settings, migracja 028b) — tolerancyjnie: bez tabeli domyślne.
-  const { data: ustawienia } = await createAdminClient()
-    .from("app_settings")
-    .select("key, value")
-    .in("key", ["sla", "auto_podmiana", KLUCZ_AUTO_PRZYPISANIE, KLUCZ_PROMIENIE]);
+  const adminDb = createAdminClient();
+  const [{ data: ustawienia }, { error: brakPunktow }] = await Promise.all([
+    adminDb
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["sla", "auto_podmiana", KLUCZ_AUTO_PRZYPISANIE, KLUCZ_PROMIENIE, KLUCZ_PLATNE_WYCENY, KLUCZ_PUNKTY]),
+    // Czy migracja 033 jest odpalona (tabela punkty_studia istnieje).
+    adminDb.from("punkty_studia").select("studio_id", { head: true, count: "exact" }),
+  ]);
   const sla = scalUstawieniaSla(ustawienia?.find((r) => r.key === "sla")?.value);
   const wlaczona = (key: string) =>
     Boolean((ustawienia?.find((r) => r.key === key)?.value as { wlaczona?: boolean } | undefined)?.wlaczona);
@@ -32,6 +39,7 @@ export default async function UstawieniaPage() {
   const promienie =
     oczyscPromienie((ustawienia?.find((r) => r.key === KLUCZ_PROMIENIE)?.value as { promienie?: unknown } | undefined)?.promienie) ??
     [...DOMYSLNE_PROMIENIE];
+  const punkty = oczyscUstawieniaPunktow(ustawienia?.find((r) => r.key === KLUCZ_PUNKTY)?.value);
 
   return (
     <div className="max-w-2xl">
@@ -40,6 +48,14 @@ export default async function UstawieniaPage() {
       <AutomatForm autoPrzypisanie={wlaczona(KLUCZ_AUTO_PRZYPISANIE)} promienie={promienie} />
 
       <SlaForm sla={sla} autoPodmiana={autoPodmiana} />
+
+      <PunktyForm
+        platneWyceny={wlaczona(KLUCZ_PLATNE_WYCENY)}
+        start={punkty.start}
+        pakietPunkty={punkty.pakietPunkty}
+        pakietCenaZl={punkty.pakietCenaZl}
+        migracja={!brakPunktow}
+      />
 
       {/* Profil admina */}
       <div className="bg-brand-grafit-light border border-brand-border rounded-2xl p-6 mb-6">

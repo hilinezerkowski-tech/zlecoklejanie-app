@@ -87,3 +87,14 @@ Po każdym pushu na `main`: sprawdzić deploy na Vercelu i przeklikać zmienion�
 - `noindex` + poza sitemapą: profil „pusty" (`czyPustyProfil` w `catalog.ts` — bez usług, opisu i zdjęć) oraz strona miasta, na której nie ma żadnego uzupełnionego profilu. Wraca do indeksu samo po uzupełnieniu.
 - `/sitemap.xml` i `/robots.txt` są publiczne w middleware (sitemapa idzie pod `zlecoklejanie.pl/sitemap-wykonawcy.xml` przez proxy Netlify). `robots.ts` blokuje domenę vercel.app, ale MUSI przepuszczać `/_next/static/` — stamtąd katalog pod zlecoklejanie.pl ładuje CSS/JS.
 - Lustro tych reguł po stronie landingu: `D:\zlecoklejanie\scripts\seo-wykonawcy.mjs` (lista wykonawców na 30 podstronach usług). Zmiana reguły tu = zmiana tam.
+
+## Płatne wyceny — punkty (Gate 1, brief „Gate 1 — płatność za wycenę", 20.11.2026)
+
+- 1 punkt = 1 wysłana wycena. Przypisanie i odmowa są darmowe. Zużycie liczy BAZA: trigger `trg_zuzyj_punkt_za_wycene` (BEFORE INSERT na `quotes`, migracja 033) — łapie wycenę z panelu (RLS) i z linku `/o/<token>` (service role). Brak punktów = wyjątek `BRAK_PUNKTOW` (rozpoznaje go `czyBrakPunktow` z `src/lib/punkty.ts`). Nigdy nie odejmuj punktów w kodzie aplikacji.
+- Przełącznik `app_settings.platne_wyceny` w `/admin/ustawienia`, domyślnie WYŁ. Regulamin (§ Opłaty): opłaty ogłaszamy wykonawcom min. 30 dni przed włączeniem.
+- Punkty startowe (`app_settings.punkty.start`, domyślnie 10) nadaje trigger przy aktywacji studia (`trg_punkty_przy_aktywacji`) — każda droga aktywacji, tylko raz na studio. Pakiet (`pakiet_punkty`, `pakiet_cena_zl`) ustawia admin; pusty = doładowanie niedostępne.
+- Tabele: `punkty_studia` (saldo, `zwolnione`), `punkty_ruchy` (historia; `quotes.punkty_id_transakcji` wskazuje ruch), `platnosci` (P24). Studio tylko SELECT swoich (RLS); zapis przez funkcje bazy / service role.
+- Hiline jest zwolnione (`punkty_studia.zwolnione`) — celowo nie kolumna w `studios`, bo studio może edytować swój wiersz `studios`.
+- Przy WŁ. płatnych wycenach automat i podmiana pomijają studia bez punktów (`studiaBezPunktow`); ręczne przypisanie przez admina działa dalej.
+- Trigger `trg_studios_chron_pola` (033): sesja samego studia nie zmieni `status`, `verified_*`, `deleted_at`, ocen Google itd. — tylko admin / service role.
+- Faktury za punkty na start wystawia Wojtek ręcznie (P24 ich nie wystawia). Kontrola reguł: `node scripts/check-punkty.mjs`.

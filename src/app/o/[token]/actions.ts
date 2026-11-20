@@ -9,8 +9,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sprawdzToken } from "@/lib/action-links";
 import { sendQuotedEmail } from "@/lib/notify-quoted";
 import { czyKodOdmowy } from "@/lib/odmowa";
+import { czyBrakPunktow } from "@/lib/punkty";
 
-export type WynikOdpowiedzi = { ok: true; message: string } | { ok: false; error: string };
+export type WynikOdpowiedzi = { ok: true; message: string } | { ok: false; error: string; brakPunktow?: boolean };
 
 type Przypisanie = { id: string; order_id: string; studio_id: string; status: string };
 
@@ -72,7 +73,12 @@ export async function wycenZTokenu(
     estimated_days: dni,
     comment,
   });
-  if (error) return { ok: false, error: "Nie udało się wysłać wyceny. Spróbuj ponownie." };
+  if (error) {
+    if (czyBrakPunktow(error.message)) {
+      return { ok: false, error: "Nie masz punktów na wycenę.", brakPunktow: true };
+    }
+    return { ok: false, error: "Nie udało się wysłać wyceny. Spróbuj ponownie." };
+  }
 
   // Statusy: zwykle robi je trigger bazy po wstawieniu wyceny; te update'y są idempotentne
   // i dopilnowują, żeby zlecenie nie zostało „pending” po naszej stronie.

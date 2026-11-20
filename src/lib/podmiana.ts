@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cityFromAddress, citySlug } from "@/lib/studio-location";
 import { studioPasuje } from "@/lib/uslugi";
+import { studiaBezPunktow } from "@/lib/punkty";
 
 export type KandydatPodmiany = { id: string; nazwa: string };
 
@@ -27,9 +28,11 @@ export async function znajdzKandydatow(
   const wykluczone = new Set((assignments ?? []).map((a: { studio_id: string }) => a.studio_id));
   const slug = citySlug(order.city);
   if (!slug) return [];
-  return ((studios ?? []) as StudioRow[])
+  const pasujace = ((studios ?? []) as StudioRow[])
     .filter((s) => !wykluczone.has(s.id))
     .filter((s) => citySlug(cityFromAddress(s.address)) === slug)
-    .filter((s) => studioPasuje(s.services, order.service_type) === "pasuje")
-    .map((s) => ({ id: s.id, nazwa: s.business_name || "bez nazwy" }));
+    .filter((s) => studioPasuje(s.services, order.service_type) === "pasuje");
+  // Gate 1: przy płatnych wycenach pomijamy studia bez punktów.
+  const bezPunktow = await studiaBezPunktow(admin, pasujace.map((s) => s.id));
+  return pasujace.filter((s) => !bezPunktow.has(s.id)).map((s) => ({ id: s.id, nazwa: s.business_name || "bez nazwy" }));
 }
