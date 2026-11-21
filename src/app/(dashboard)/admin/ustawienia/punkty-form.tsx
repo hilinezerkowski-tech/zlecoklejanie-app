@@ -13,6 +13,7 @@ export function PunktyForm({
   pakietPunkty,
   pakietCenaZl,
   migracja,
+  p24Status,
 }: {
   platneWyceny: boolean;
   start: number;
@@ -20,6 +21,8 @@ export function PunktyForm({
   pakietCenaZl: number | null;
   /** false = brak migracji 033 (tabela punkty_studia) — przełącznik zablokowany. */
   migracja: boolean;
+  /** Opis stanu Przelewy24 (klucze, sandbox/produkcja, test dostępu). */
+  p24Status: string;
 }) {
   const [wlaczone, setWlaczone] = useState(platneWyceny);
   const [pStart, setPStart] = useState(String(start));
@@ -97,6 +100,7 @@ export function PunktyForm({
           <input type="text" inputMode="decimal" value={pCena} placeholder="—" onChange={(e) => setPCena(e.target.value)} className={input} />
           <span className="text-xs text-brand-chrom">puste = doładowanie niedostępne</span>
         </div>
+        <p className="text-xs text-brand-chrom">Przelewy24: {p24Status}</p>
         <button
           type="button"
           onClick={zapisz}

@@ -99,3 +99,6 @@ Po każdym pushu na `main`: sprawdzić deploy na Vercelu i przeklikać zmienion�
 - Przy WŁ. płatnych wycenach automat i podmiana pomijają studia bez punktów (`studiaBezPunktow`); ręczne przypisanie przez admina działa dalej.
 - Trigger `trg_studios_chron_pola` (033): sesja samego studia nie zmieni `status`, `verified_*`, `deleted_at`, ocen Google itd. — tylko admin / service role.
 - Faktury za punkty na start wystawia Wojtek ręcznie (P24 ich nie wystawia). Kontrola reguł: `node scripts/check-punkty.mjs`.
+- Przelewy24 (Faza 2): `src/lib/p24.ts` (REST v1, podpisy SHA-384 o stałej kolejności kluczy), `src/lib/platnosci.ts` (płatność → P24 → webhook). Env: `P24_MERCHANT_ID`, `P24_POS_ID`, `P24_CRC`, `P24_API_KEY`; domyślnie sandbox, produkcja dopiero z `P24_SANDBOX=0`. Bez kluczy albo bez pakietu w ustawieniach przycisk doładowania jest nieaktywny. Status kluczy widać w `/admin/ustawienia`.
+- Webhook `/api/p24/webhook` jest publiczny (middleware): sprawdza podpis, merchant/pos, kwotę z wiersza `platnosci`, robi PUT `/transaction/verify`, dopiero potem `zaksieguj_platnosc()` (migracja 034, idempotentna). Kwota i liczba punktów zawsze z bazy. Po wpłacie mail „[Faktura]” do admina z danymi studia.
+- Doładowanie działa z panelu (`/studio/punkty`) i z linku w mailu (`/o/<token>`, studio z przypisania). Kontrola podpisów: `node scripts/check-p24.mjs`.

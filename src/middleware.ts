@@ -31,10 +31,10 @@ export async function middleware(request: NextRequest) {
   // Publiczny webhook: Supabase (pg_net) nie wysyla ciasteczek sesji, wiec
   //  /api/lead-alert musi ominac guard. Endpoint broni sie sam (staly odbiorca,
   //  tresc z bazy po ID, tylko swieze leady) — patrz src/app/api/lead-alert.
-  // /api/cron/* broni się sam (CRON_SECRET); /o/<token> = odpowiedź studia z linku (HMAC, bez logowania).
+  // /api/cron/* broni się sam (CRON_SECRET); /api/p24/webhook — podpis P24 + verify (src/lib/platnosci.ts); /o/<token> = odpowiedź studia z linku (HMAC, bez logowania).
   // /sitemap.xml i /robots.txt muszą być publiczne: sitemapa katalogu jest serwowana pod
   //  zlecoklejanie.pl/sitemap-wykonawcy.xml (proxy Netlify) — za logowaniem zwracała 404.
-  const publicPaths = ["/login", "/auth/callback", "/auth/confirm", "/api/lead-alert", "/api/cron", "/o/", "/wykonawca", "/wykonawcy", "/sitemap.xml", "/robots.txt"];
+  const publicPaths = ["/login", "/auth/callback", "/auth/confirm", "/api/lead-alert", "/api/p24/webhook", "/api/cron", "/o/", "/wykonawca", "/wykonawcy", "/sitemap.xml", "/robots.txt"];
   if (publicPaths.some((p) => pathname.startsWith(p))) {
     return supabaseResponse;
   }

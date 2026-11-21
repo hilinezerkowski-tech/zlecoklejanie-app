@@ -7,6 +7,7 @@ import { labelUslugi } from "@/lib/uslugi";
 import { labelOdmowy } from "@/lib/odmowa";
 import { OdpowiedzForm } from "./odpowiedz-form";
 import { czyPlatneWyceny, mozeWycenic, pobierzSaldo } from "@/lib/punkty";
+import { doladowanieDostepne } from "@/lib/platnosci";
 
 // Strona z tokenem w adresie: nie indeksować, nie wysyłać adresu w nagłówku Referer.
 export const metadata: Metadata = {
@@ -48,7 +49,13 @@ function Ramka({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default async function OdpowiedzPage({ params }: { params: { token: string } }) {
+export default async function OdpowiedzPage({
+  params,
+  searchParams,
+}: {
+  params: { token: string };
+  searchParams?: { platnosc?: string };
+}) {
   const t = sprawdzToken(params.token);
   if (!t.ok) {
     return (
@@ -90,10 +97,11 @@ export default async function OdpowiedzPage({ params }: { params: { token: strin
     return <Komunikat tytul={tytul} tekst={tekst} />;
   }
 
-  const [fotki, platne, saldo] = await Promise.all([
+  const [fotki, platne, saldo, doladowanie] = await Promise.all([
     signedPhotoUrls(Array.isArray(order.photos) ? order.photos : []),
     czyPlatneWyceny(admin),
     pobierzSaldo(admin, a.studio_id),
+    doladowanieDostepne(admin),
   ]);
   const auto = [order.car_brand, order.car_model].filter(Boolean).join(" ");
 
@@ -145,7 +153,12 @@ export default async function OdpowiedzPage({ params }: { params: { token: strin
         </div>
       )}
 
-      <OdpowiedzForm token={params.token} bezPunktow={!mozeWycenic(platne, saldo)} />
+      {searchParams?.platnosc && (
+        <p className="mb-4 rounded-xl border border-brand-lime/30 bg-brand-lime/10 p-4 text-sm">
+          Dziękujemy! Punkty dopiszemy, gdy Przelewy24 potwierdzą płatność — zwykle w ciągu minuty. Odśwież stronę.
+        </p>
+      )}
+      <OdpowiedzForm token={params.token} bezPunktow={!mozeWycenic(platne, saldo)} doladowanie={doladowanie} />
     </Ramka>
   );
 }
