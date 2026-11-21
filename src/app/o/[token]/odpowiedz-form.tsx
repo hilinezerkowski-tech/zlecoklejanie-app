@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { odrzucZTokenu, wycenZTokenu } from "./actions";
+import { doladujZTokenu, odrzucZTokenu, wycenZTokenu } from "./actions";
+import { DoladujButton } from "@/components/ui/doladuj-button";
 import { POWODY_ODMOWY } from "@/lib/odmowa";
 import { BrakPunktow } from "@/components/ui/brak-punktow";
 
@@ -9,7 +10,16 @@ const input =
   "w-full bg-brand-grafit border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-kosc placeholder:text-brand-chrom/50 focus:outline-none focus:border-brand-lime/50 transition";
 
 /** bezPunktow (Gate 1): studio nie ma punktów — zamiast pól wyceny ekran doładowania; odmowa działa (darmowa). */
-export function OdpowiedzForm({ token, bezPunktow = false }: { token: string; bezPunktow?: boolean }) {
+export function OdpowiedzForm({
+  token,
+  bezPunktow = false,
+  doladowanie = false,
+}: {
+  token: string;
+  bezPunktow?: boolean;
+  /** Czy da się doładować online (klucze P24 + pakiet ustawiony). */
+  doladowanie?: boolean;
+}) {
   const [tryb, setTryb] = useState<"wycena" | "odmowa">("wycena");
   const [brakPunktow, setBrakPunktow] = useState(bezPunktow);
   const [pending, start] = useTransition();
@@ -79,7 +89,18 @@ export function OdpowiedzForm({ token, bezPunktow = false }: { token: string; be
       )}
 
       {tryb === "wycena" && brakPunktow ? (
-        <BrakPunktow href="/login" etykieta="Zaloguj się i doładuj punkty →" />
+        doladowanie ? (
+          <div className="bg-amber-400/10 border border-amber-400/30 rounded-2xl p-6">
+            <h2 className="font-semibold text-amber-400 mb-2">Nie masz punktów na wycenę</h2>
+            <p className="text-sm text-brand-chrom mb-4">
+              Wysłanie wyceny kosztuje 1 punkt. Doładuj punkty — po płatności wrócisz tutaj i wyślesz wycenę. Odmowa jest
+              bezpłatna.
+            </p>
+            <DoladujButton akcja={() => doladujZTokenu(token)} />
+          </div>
+        ) : (
+          <BrakPunktow href="/login" etykieta="Zaloguj się do panelu →" />
+        )
       ) : tryb === "wycena" ? (
         <div className="space-y-4">
           <p className="text-sm text-brand-chrom">

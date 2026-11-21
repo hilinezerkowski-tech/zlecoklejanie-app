@@ -1,5 +1,5 @@
 // /studio/punkty — saldo, historia punktów i doładowanie (Gate 1).
-// Doładowanie przez Przelewy24 dochodzi w Fazie 2; do tego czasu przycisk jest nieaktywny.
+// Doładowanie przez Przelewy24 (Faza 2): przycisk aktywny, gdy są klucze P24 i pakiet ustawiony przez admina.
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -11,6 +11,9 @@ import {
   punktyTxt,
   type SaldoStudia,
 } from "@/lib/punkty";
+import { doladowanieDostepne } from "@/lib/platnosci";
+import { DoladujButton } from "@/components/ui/doladuj-button";
+import { doladujPunkty } from "./actions";
 
 export const metadata = { title: "Punkty — ZlecOklejanie.pl" };
 export const dynamic = "force-dynamic";
@@ -20,7 +23,7 @@ type Ruch = { id: string; zmiana: number; saldo_po: number; zrodlo: string; crea
 const kiedy = (iso: string) =>
   new Date(iso).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw", dateStyle: "short", timeStyle: "short" });
 
-export default async function PunktyStudia() {
+export default async function PunktyStudia({ searchParams }: { searchParams: { platnosc?: string } }) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -28,7 +31,7 @@ export default async function PunktyStudia() {
   const admin = createAdminClient();
 
   // RLS: studio widzi tylko swoje saldo i ruchy (migracja 033).
-  const [{ data: saldoRow }, { data: ruchy }, platne, ustawienia] = await Promise.all([
+  const [{ data: saldoRow }, { data: ruchy }, platne, ustawienia, dostepne, { data: platnosci }] = await Promise.all([
     supabase.from("punkty_studia").select("saldo, zwolnione").eq("studio_id", user!.id).maybeSingle(),
     supabase
       .from("punkty_ruchy")
@@ -38,6 +41,13 @@ export default async function PunktyStudia() {
       .limit(50),
     czyPlatneWyceny(admin),
     pobierzUstawieniaPunktow(admin),
+    doladowanieDostepne(admin),
+    supabase
+      .from("platnosci")
+      .select("id, kwota, punkty_kupione, status, created_at")
+      .eq("studio_id", user!.id)
+      .order("created_at", { ascending: false })
+      .limit(10),
   ]);
   const saldo: SaldoStudia | null = saldoRow ? { saldo: saldoRow.saldo ?? 0, zwolnione: Boolean(saldoRow.zwolnione) } : null;
   const pakiet =
@@ -48,6 +58,11 @@ export default async function PunktyStudia() {
   return (
     <div className="max-w-3xl">
       <h1 className="text-2xl font-bold mb-2">Punkty na wyceny</h1>
+      {searchParams.platnosc && (
+        <p className="mb-4 rounded-xl border border-brand-lime/30 bg-brand-lime/10 p-4 text-sm">
+          Dziękujemy! Punkty dopiszemy, gdy Przelewy24 potwierdzą płatność — zwykle w ciągu minuty. Odśwież stronę.
+        </p>
+      )}
       <p className="text-brand-chrom mb-6">
         Za każdą wysłaną wycenę płacisz 1 punkt. Odmowa zlecenia i samo otrzymanie zlecenia są bezpłatne.
       </p>
@@ -72,14 +87,42 @@ export default async function PunktyStudia() {
           ) : (
             <p className="text-sm text-brand-chrom mb-4">Cennik pakietów pojawi się wkrótce.</p>
           )}
-          <button
-            type="button"
-            disabled
-            className="bg-brand-lime/40 text-brand-grafit font-semibold px-4 py-2 rounded-lg text-sm cursor-not-allowed"
-          >
-            Doładuj przez Przelewy24 — wkrótce
-          </button>
+          {dostepne ? (
+            <DoladujButton akcja={doladujPunkty} />
+          ) : (
+            <button
+              type="button"
+              disabled
+              className="bg-brand-lime/40 text-brand-grafit font-semibold px-4 py-2 rounded-lg text-sm cursor-not-allowed"
+            >
+              Doładuj przez Przelewy24 — wkrótce
+            </button>
+          )}
+          <p className="mt-3 text-xs text-brand-chrom">Fakturę VAT wystawimy na dane firmy z profilu (NIP i adres).</p>
         </div>
+      )}
+
+      {(platnosci ?? []).length > 0 && (
+        <>
+          <h2 className="font-semibold mb-3">Płatności</h2>
+          <ul className="divide-y divide-brand-border rounded-2xl border border-brand-border bg-brand-grafit-light mb-6">
+            {((platnosci ?? []) as { id: string; kwota: number; punkty_kupione: number; status: string; created_at: string }[]).map((p) => (
+              <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 text-sm">
+                <span className="text-brand-chrom w-32">{kiedy(p.created_at)}</span>
+                <span className="flex-1">
+                  {punktyTxt(p.punkty_kupione)} · {Number(p.kwota).toLocaleString("pl-PL", { minimumFractionDigits: 2 })} zł
+                </span>
+                <span
+                  className={
+                    p.status === "zaplacono" ? "text-brand-lime" : p.status === "blad" ? "text-red-400" : "text-amber-400"
+                  }
+                >
+                  {p.status === "zaplacono" ? "opłacona" : p.status === "blad" ? "nieudana" : "oczekuje"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <h2 className="font-semibold mb-3">Historia</h2>

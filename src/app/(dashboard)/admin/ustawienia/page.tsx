@@ -5,6 +5,7 @@ import { SlaForm } from "./sla-form";
 import { AutomatForm } from "./automat-form";
 import { PunktyForm } from "./punkty-form";
 import { KLUCZ_PLATNE_WYCENY, KLUCZ_PUNKTY, oczyscUstawieniaPunktow } from "@/lib/punkty";
+import { p24Konfiguracja, testDostepu } from "@/lib/p24";
 import {
   DOMYSLNE_PROMIENIE,
   KLUCZ_AUTO_PRZYPISANIE,
@@ -39,6 +40,11 @@ export default async function UstawieniaPage() {
   const promienie =
     oczyscPromienie((ustawienia?.find((r) => r.key === KLUCZ_PROMIENIE)?.value as { promienie?: unknown } | undefined)?.promienie) ??
     [...DOMYSLNE_PROMIENIE];
+  // Status Przelewy24 (Faza 2): klucze w Vercelu + test dostępu do API.
+  const p24 = p24Konfiguracja();
+  const p24Status = !p24
+    ? "brak kluczy P24 w Vercelu — doładowanie niedostępne"
+    : `${p24.sandbox ? "tryb testowy (sandbox)" : "PRODUKCJA"} · ${(await testDostepu(p24)) ? "klucze działają" : "klucze NIE działają — sprawdź wartości"}`;
   const punkty = oczyscUstawieniaPunktow(ustawienia?.find((r) => r.key === KLUCZ_PUNKTY)?.value);
 
   return (
@@ -55,6 +61,7 @@ export default async function UstawieniaPage() {
         pakietPunkty={punkty.pakietPunkty}
         pakietCenaZl={punkty.pakietCenaZl}
         migracja={!brakPunktow}
+        p24Status={p24Status}
       />
 
       {/* Profil admina */}

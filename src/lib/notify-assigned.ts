@@ -83,7 +83,7 @@ export async function sendAssignedEmail(
   const [platne, saldo] = await Promise.all([czyPlatneWyceny(admin), pobierzSaldo(admin, studioId)]);
   const liniaPunktow =
     platne && saldo && !saldo.zwolnione
-      ? `<p style="background:#f6f6f2;border-radius:8px;padding:10px 12px;">Wyslanie wyceny kosztuje <strong>1 punkt</strong> (odmowa jest bezplatna). Masz teraz: <strong>${punktyTxt(saldo.saldo)}</strong>. <a href="${APP_URL}/studio/punkty">Doladuj punkty</a></p>`
+      ? `<p style="background:#f6f6f2;border-radius:8px;padding:10px 12px;">Wyslanie wyceny kosztuje <strong>1 punkt</strong> (odmowa jest bezplatna). Masz teraz: <strong>${punktyTxt(saldo.saldo)}</strong>. <a href="${link ?? `${APP_URL}/studio/punkty`}">Doladuj punkty</a></p>`
       : "";
 
   const result = await sendEmailResult(

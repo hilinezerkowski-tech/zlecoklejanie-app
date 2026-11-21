@@ -10,10 +10,19 @@ import { sprawdzToken } from "@/lib/action-links";
 import { sendQuotedEmail } from "@/lib/notify-quoted";
 import { czyKodOdmowy } from "@/lib/odmowa";
 import { czyBrakPunktow } from "@/lib/punkty";
+import { APP_URL } from "@/lib/email";
+import { utworzPlatnosc, type WynikPlatnosci } from "@/lib/platnosci";
 
 export type WynikOdpowiedzi = { ok: true; message: string } | { ok: false; error: string; brakPunktow?: boolean };
 
 type Przypisanie = { id: string; order_id: string; studio_id: string; status: string };
+
+/** Doładowanie punktów prosto z linku w mailu (Gate 1, Faza 2) — studio z przypisania, nie z żądania. */
+export async function doladujZTokenu(token: string): Promise<WynikPlatnosci> {
+  const r = await przypisanieZTokenu(token);
+  if (!r.ok) return r;
+  return utworzPlatnosc(createAdminClient(), r.a.studio_id, `${APP_URL}/o/${encodeURIComponent(token)}?platnosc=1`);
+}
 
 async function przypisanieZTokenu(token: string): Promise<{ ok: true; a: Przypisanie } | { ok: false; error: string }> {
   const t = sprawdzToken(token);
