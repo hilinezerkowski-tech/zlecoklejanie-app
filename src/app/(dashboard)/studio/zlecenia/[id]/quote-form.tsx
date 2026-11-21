@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { czyBrakPunktow } from "@/lib/punkty";
 
 const inputClass =
   "w-full bg-brand-grafit border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-kosc placeholder:text-brand-chrom/50 focus:outline-none focus:border-brand-lime/50 transition";
@@ -58,6 +59,12 @@ export function QuoteForm({
 
     if (quoteError) {
       setLoading(false);
+      if (czyBrakPunktow(quoteError.message)) {
+        // Saldo spadło do zera w międzyczasie — odśwież, żeby pokazać ekran doładowania.
+        setError("Nie masz punktów na wycenę. Doładuj je w zakładce Punkty.");
+        router.refresh();
+        return;
+      }
       setError("Nie udało się wysłać wyceny. Spróbuj ponownie.");
       return;
     }

@@ -13,6 +13,7 @@ import { geokoduj, punktZKodu, sortujWgOdleglosci } from "@/lib/geo";
 import { wybierzStudia, type Kandydat } from "@/lib/automation/auto-reguly";
 import { pobierzPromienie } from "@/lib/automation/ustawienia";
 import { utworzZlecenieZLeada } from "@/lib/automation/zlecenie-z-leada";
+import { studiaBezPunktow } from "@/lib/punkty";
 
 export type WynikAutomatu =
   | { przypisano: true; studia: { id: string; nazwa: string; km: number | null }[]; promienKm: number | null; message: string }
@@ -125,8 +126,15 @@ export async function autoPrzypiszZlecenie(
       .eq("is_paused", false)
       .is("deleted_at", null);
 
+    // Gate 1: przy płatnych wycenach automat pomija studia bez punktów (i tak by nie wyceniły).
+    const wszystkie = (studios ?? []) as StudioRow[];
+    const bezPunktow = await studiaBezPunktow(admin, wszystkie.map((s) => s.id));
+    if (opts.wykonawcaSlug && wszystkie.some((s) => s.slug === opts.wykonawcaSlug && bezPunktow.has(s.id))) {
+      return wyjatek("studio wskazane przez klienta nie ma punktów na wycenę");
+    }
+
     const zKm = sortujWgOdleglosci(
-      ((studios ?? []) as StudioRow[]).map((s) => ({ ...s, business_name: s.business_name ?? undefined })),
+      wszystkie.filter((s) => !bezPunktow.has(s.id)).map((s) => ({ ...s, business_name: s.business_name ?? undefined })),
       order.city
     );
     const obciazenie = await obciazenieStudiow(admin);

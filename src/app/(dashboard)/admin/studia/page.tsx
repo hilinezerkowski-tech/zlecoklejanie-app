@@ -72,6 +72,12 @@ export default async function StudiaPage({
     .is("deleted_at", null);
   const noServicesCount = (allServices || []).filter((s: any) => !maUslugeCore(s.services)).length;
 
+  // Gate 1: saldo punktów do wglądu (bez edycji — korekty przez SQL). Bez migracji 033 pusto.
+  const { data: salda } = await supabase.from("punkty_studia").select("studio_id, saldo, zwolnione");
+  const saldoStudia = new Map(
+    ((salda ?? []) as { studio_id: string; saldo: number; zwolnione: boolean }[]).map((r) => [r.studio_id, r])
+  );
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -182,6 +188,20 @@ export default async function StudiaPage({
                       {studio.provider_type === "freelancer" && (
                         <span className="text-xs px-2 py-1 rounded-full font-medium bg-purple-400/15 text-purple-400">
                           🚗 Wrapper
+                        </span>
+                      )}
+                      {saldoStudia.has(studio.id) && (
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            saldoStudia.get(studio.id)!.zwolnione
+                              ? "bg-white/10 text-brand-chrom"
+                              : saldoStudia.get(studio.id)!.saldo > 0
+                              ? "bg-brand-lime/10 text-brand-lime"
+                              : "bg-amber-400/15 text-amber-400"
+                          }`}
+                          title="Punkty na wyceny"
+                        >
+                          🎟️ {saldoStudia.get(studio.id)!.zwolnione ? "bez opłat" : saldoStudia.get(studio.id)!.saldo}
                         </span>
                       )}
                       {!studio.deleted_at && !maUslugeCore(studio.services) && (

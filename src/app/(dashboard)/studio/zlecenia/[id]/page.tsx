@@ -6,6 +6,9 @@ import { QuoteForm } from "./quote-form";
 import { ContactCard, type OrderContact } from "@/components/ui/contact-card";
 import { MessageThread, type ThreadMessage } from "@/components/ui/message-thread";
 import { labelUslugi } from "@/lib/uslugi";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { czyPlatneWyceny, mozeWycenic, pobierzSaldo } from "@/lib/punkty";
+import { BrakPunktow } from "@/components/ui/brak-punktow";
 
 const scopeLabels: Record<string, string> = {
   full: "Całe auto",
@@ -217,15 +220,24 @@ export default async function StudioOrderDetailPage({
             ? "Odmówiono tego zlecenia — przekazaliśmy je innemu studiu."
             : "Termin na odpowiedź minął — zlecenie przekazaliśmy dalej."}
         </div>
-      ) : (
+      ) : (await mozeWycenicTeraz(user!.id)) ? (
         <QuoteForm
           orderId={order.id}
           studioId={user!.id}
           assignmentId={assignment.id}
         />
+      ) : (
+        <BrakPunktow />
       )}
     </div>
   );
+}
+
+/** Gate 1: przy płatnych wycenach studio bez punktów widzi ekran doładowania zamiast formularza. */
+async function mozeWycenicTeraz(studioId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const [platne, saldo] = await Promise.all([czyPlatneWyceny(admin), pobierzSaldo(admin, studioId)]);
+  return mozeWycenic(platne, saldo);
 }
 
 function Detail({ label, value }: { label: string; value: string }) {

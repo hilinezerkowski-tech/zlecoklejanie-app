@@ -1,6 +1,7 @@
 import { APP_URL, sendEmailResult, type SendEmailResult } from "@/lib/email";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { labelUslugi } from "@/lib/uslugi";
+import { czyPlatneWyceny, pobierzSaldo, punktyTxt } from "@/lib/punkty";
 import { linkAkcji } from "@/lib/action-links";
 import { sendSms } from "@/lib/sms";
 
@@ -78,6 +79,13 @@ export async function sendAssignedEmail(
   const orderLabel = carPart ? `${carPart} — ${order.city}` : `${order.city}`;
   const photoCount = Array.isArray(order.photos) ? order.photos.length : 0;
 
+  // Gate 1: przy płatnych wycenach informacja o koszcie i saldzie (nie dla studiów zwolnionych).
+  const [platne, saldo] = await Promise.all([czyPlatneWyceny(admin), pobierzSaldo(admin, studioId)]);
+  const liniaPunktow =
+    platne && saldo && !saldo.zwolnione
+      ? `<p style="background:#f6f6f2;border-radius:8px;padding:10px 12px;">Wyslanie wyceny kosztuje <strong>1 punkt</strong> (odmowa jest bezplatna). Masz teraz: <strong>${punktyTxt(saldo.saldo)}</strong>. <a href="${APP_URL}/studio/punkty">Doladuj punkty</a></p>`
+      : "";
+
   const result = await sendEmailResult(
     studioProfile.email,
     `Nowe zlecenie do wyceny: ${orderLabel}`,
@@ -87,6 +95,7 @@ export async function sendAssignedEmail(
        <p>Klient szuka wykonawcy: <strong>${orderLabel}</strong>.</p>
        <p>Usługa: <strong>${labelUslugi(order.service_type)}</strong>.</p>
        <p>${link ? "Wycen zlecenie albo je odrzuc jednym kliknieciem" : "Zaloguj sie i wyslij wycene"} — maksymalnie 3 studia dostaja to zapytanie, wiec masz realna szanse. Odpowiedz w ciagu 48 godzin roboczych, potem przekazemy zlecenie dalej.</p>
+       ${liniaPunktow}
        ${photoCount > 0 ? `<p><strong>Zalaczniki:</strong> ${photoCount} ${photoCount === 1 ? "zdjecie" : "zdjec"} — zobacz w panelu.</p>` : ""}`,
       link ?? `${APP_URL}/studio/zlecenia/${order.id}`,
       link ? "Wycen lub odrzuc zlecenie" : "Zobacz zlecenie i wycen",

@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { labelUslugi, maUslugeCore } from "@/lib/uslugi";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { czyPlatneWyceny, pobierzSaldo } from "@/lib/punkty";
+import { SaldoPunktow } from "@/components/ui/saldo-punktow";
+
+const saldoStudia = (id: string) => pobierzSaldo(createAdminClient(), id);
 
 export default async function StudioDashboard() {
   const supabase = await createClient();
@@ -107,6 +112,8 @@ export default async function StudioDashboard() {
           </a>
         </div>
       )}
+
+      {studio?.status === "active" && <SaldoPunktow saldo={await saldoStudia(user!.id)} platne={await czyPlatneWyceny(createAdminClient())} />}
 
       {/* Statystyki */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
